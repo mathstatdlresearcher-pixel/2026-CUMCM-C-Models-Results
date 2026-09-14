@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题4 模型检验</title>
+<script>window.MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$','$']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 920px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; font-size:21px; line-height:1.45; }
+p { text-align:justify; }
+table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:4px 6px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+.ok { color:#1e8a5a; font-weight:bold; }
+.bad { color:#c0392b; font-weight:bold; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+img { width:100%; border:1px solid #d8dee9; margin:6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin:0 0 16px; }
+</style></head><body>
+<h1>问题4　模型检验报告</h1>
+<p style="text-align:center;color:#4b5563">把 result4-2 / result4-3 代回约束 · 用附件4 重算费用 · 4-3 按 $G^{\mathrm{final}}$ 因果回放</p>
+<h2>〇　检验在做什么</h2>
+<p>问题2、3 求解后都把全年调度代回约束。问题4 的模型就是这两套，只把 $c_t$ 换成 $c_{d,t}$，所以检验也分两块：</p>
+<p><b>4-2</b>（对应问题2）官方只保留了 2–12 月的 $G^{\mathrm{plan}}$、4 小时充放电块和紧急购电段。检验：计划非负、电量与费用列、$J^{0}=\sum c_{d,t}G_t$ 必须用附件4 而不是附件1、日费用 $J=J^{0}+5c^{\top}H$、跨日 $E_{d+1,0}=E_{d,144}$、块合计满足 $E_{24}=E_0+0.9\sum C-\sum D/0.9$。</p>
+<p><b>4-3</b>（对应问题3）表里有 $G^{(0)}$ 和 $G^{\mathrm{final}}$。把 $G^{\mathrm{final}}$ 与附件2 实际负荷/光伏、当日初 $E_0$ 送进与求解相同的 <code>execute_window</code>，得到 10 min 的 $C,D,H,E,S^{\mathrm{use}}$，再查能量平衡、储能递推、容量、互斥，以及 $J^{0}=\sum c_{d,t}G^{(0)}$、$J^{\mathrm{em}}=5\sum cH$。</p>
+<p>本次结论：<span class='ok'>全部通过（40/40）</span>。核对区间为 result 模板的 334 天（2025-02-01 起）；1 月只检验日端点 SOC 衔接。
+4-2 全年费用 18759189.56 元（计划 17440299.80 + 紧急 1318889.76）；
+4-3 全年 15459952.69 元（计划 14562638.95 + 调整 803292.26 + 紧急 94021.48）。</p>
+<div class="box">4-2 的 10 min 充放电轨迹求解时未另存数组，互斥与逐格 SOC 只能在 4-3 回放里看全；4-2 用 4 小时块合计还原日储能恒等式，与问题2 检验图 4–6 同级信息不在 result4-2 里。</div>
+
+<h2>1　约束检验总表</h2>
+<table><tr><th>部分</th><th>检验项目</th><th>对应公式</th><th>违反量</th><th>单位</th><th>结论</th><th>说明</th></tr><tr><td>4-2</td><td>首日 E0=6000</td><td>$E_{1,0}=6000$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td>E00=6000.000000</td></tr><tr><td>4-2</td><td>跨日 SOC 连续</td><td>$E_{d+1,0}=E_{d,144}$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>SOC 下界（日端点）</td><td>$E\ge 1200$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>SOC 上界（日端点）</td><td>$E\le 10800$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>首日 E0=6000</td><td>$E_{1,0}=6000$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td>E00=6000.000000</td></tr><tr><td>4-3</td><td>跨日 SOC 连续</td><td>$E_{d+1,0}=E_{d,144}$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>SOC 下界（日端点）</td><td>$E\ge 1200$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>SOC 上界（日端点）</td><td>$E\le 10800$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>计划购电非负</td><td>$G^{\mathrm{plan}}\ge 0$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>计划电量对齐 daily</td><td>$\sum_t G_t = Q^{\mathrm{plan}}$</td><td class='n'>0.000776204</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>xlsx 全日电量列</td><td>$Q^{\mathrm{xlsx}}=\sum G$</td><td class='n'>0.0008</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>计划费用按附件4复算</td><td>$J^{0}=\sum c_{d,t}G_t$</td><td class='n'>0.000610341</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>费用不是附件1（应明显偏离）</td><td>$\max|c^{(1)\top}G-J^{0}|$ 应大</td><td class='n'>0</td><td>元</td><td><span class='ok'>通过</span></td><td>误用附件1时最大偏差 12142.95 元</td></tr><tr><td>4-2</td><td>日费用恒等式</td><td>$J=J^{0}+5c^{\top}H$</td><td class='n'>5.82077e-11</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>xlsx 总费用列</td><td>$J^{\mathrm{xlsx}}=J_d$</td><td class='n'>4.96998e-05</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>紧急电量对齐（2–12月）</td><td>$\sum H$ 段=daily</td><td class='n'>0.000266175</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>块充放电非负</td><td>$C^{\mathrm{blk}},D^{\mathrm{blk}}\ge 0$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>日储能恒等式（4h 块合计）</td><td>$E_{24}=E_0+0.9\sum C-\sum D/0.9$</td><td class='n'>0.00022</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-2</td><td>xlsx 日端点对齐 daily</td><td>$E_0,E_{24}$</td><td class='n'>4.78593e-05</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>初始计划非负</td><td>$G^{(0)}\ge 0$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>调整后计划非负</td><td>$G^{\mathrm{final}}\ge 0$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>G0 电量对齐 daily</td><td>$\sum G^{(0)}=Q_0$</td><td class='n'>0.000979401</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>Gfinal 电量对齐 daily</td><td>$\sum G^{f}=Q^{f}$</td><td class='n'>0.00121343</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>计划费用按附件4复算</td><td>$J^{0}=\sum c_{d,t}G^{(0)}$</td><td class='n'>0.000909128</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>回放紧急电量</td><td>$H^{\mathrm{exec}}\stackrel{?}{=}$ daily</td><td class='n'>0.000705653</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>回放日末 SOC</td><td>$E_{144}^{\mathrm{exec}}=E_{24}$</td><td class='n'>0.000692778</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>紧急费用按 5c 复算</td><td>$J^{\mathrm{em}}=5\sum cH$</td><td class='n'>0.00499113</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>日费用恒等式</td><td>$J=J^{0}+J^{\mathrm{adj}}+J^{\mathrm{em}}$</td><td class='n'>1.45519e-11</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>xlsx 总费用列</td><td>$J^{\mathrm{xlsx}}=J_d$</td><td class='n'>4.96652e-05</td><td>元</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>紧急电量对齐（2–12月表）</td><td>段合计=daily $H$</td><td class='n'>0.000112917</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>SOC 10 min 递推</td><td>$E_t=E_{t-1}+0.9C-D/0.9$</td><td class='n'>9.09495e-13</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>SOC 下界（回放）</td><td>$E_t\ge 1200$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td>min=1200.0000</td></tr><tr><td>4-3</td><td>SOC 上界（回放）</td><td>$E_t\le 10800$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td>max=10800.0000</td></tr><tr><td>4-3</td><td>充电上限</td><td>$C\le B_{\max}$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>放电上限</td><td>$D\le B_{\max}$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>不同时充放</td><td>$\min(C,D)=0$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>光伏利用不上溢</td><td>$S^{\mathrm{use}}\le S$</td><td class='n'>0</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>能量平衡（允许多余计划）</td><td>$G^{f}+H+S^{u}+D-L-C\ge 0$</td><td class='n'>2.27374e-13</td><td>kWh</td><td><span class='ok'>通过</span></td><td>min=-2.274e-13, max=5.923e+01</td></tr><tr><td>4-3</td><td>回放充电块合计</td><td>$\sum_{4h}C$</td><td class='n'>0.000723251</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr><tr><td>4-3</td><td>回放放电块合计</td><td>$\sum_{4h}D$</td><td class='n'>0.000575667</td><td>kWh</td><td><span class='ok'>通过</span></td><td></td></tr></table>
+<p>违反量是该条被破坏的最大值。费用列允许 $8\times 10^{-2}$ 元（xlsx 四位小数）；电量允许 $5\times 10^{-2}$ kWh。
+“费用不是附件1”这一行：若误用附件1 复算，最大偏差只有约 0；实际偏差 12142.95 元，说明账单用的是附件4。附件4 复算偏差 6.10e-04 元。</p>
+
+<h2>2　检验图</h2>
+<img src="problem4/outputs/verification/figures/v42_cost_c4.png" alt="图1　4-2：横轴为求解计划费，纵轴为附件4 点积。应落在对角线上。"/><p class="cap">图1　4-2：横轴为求解计划费，纵轴为附件4 点积。应落在对角线上。</p>
+<img src="problem4/outputs/verification/figures/v42_soc_cont.png" alt="图2　4-2：相邻两日端点 SOC 残差，应贴 0。"/><p class="cap">图2　4-2：相邻两日端点 SOC 残差，应贴 0。</p>
+<img src="problem4/outputs/verification/figures/v42_soc_ident.png" alt="图3　4-2：用 6 个 4 小时块的充放电合计还原日末 SOC 的残差。"/><p class="cap">图3　4-2：用 6 个 4 小时块的充放电合计还原日末 SOC 的残差。</p>
+<img src="problem4/outputs/verification/figures/v43_balance.png" alt="图4　4-3：能量平衡。允许正盈余（计划买多了消不掉）；负向越界才算缺供。"/><p class="cap">图4　4-3：能量平衡。允许正盈余（计划买多了消不掉）；负向越界才算缺供。</p>
+<img src="problem4/outputs/verification/figures/v43_soc.png" alt="图5　4-3：储能递推残差，应在浮点量级。"/><p class="cap">图5　4-3：储能递推残差，应在浮点量级。</p>
+
+
+<h2>3　与问题2、3 检验的对应</h2>
+<table>
+<tr><th>问题2 / 3 的检验</th><th>问题4 里怎么做</th></tr>
+<tr><td>代回 SOC、容量、互斥</td><td>4-3 用 $G^{\mathrm{final}}$ 回放后逐格检查；4-2 检查日端点与块合计恒等式</td></tr>
+<tr><td>$c^{\top}q+5c^{\top}h$ 重算</td><td>把 $c$ 换成当天附件4；$J^{\mathrm{adj}}$ 仍用求解记录（多次滚动的增减不能由净 $\Delta G$ 还原）</td></tr>
+<tr><td>result 与数组对齐</td><td>result4-2 / 4-3 的电量列、费用列、紧急段、充放电块与 daily 对齐</td></tr>
+<tr><td>预测未泄漏（问题2）</td><td>问题4 不重做预测，沿用问题2 凸组合与附件3 滚动</td></tr>
+</table>
+<p>代码：<code>problem4/verify_q4.py</code>。表：<code>problem4/outputs/verification/check_table.csv</code>。</p>
+</body></html>

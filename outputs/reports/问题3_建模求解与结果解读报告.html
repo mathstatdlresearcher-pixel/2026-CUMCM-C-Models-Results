@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题3 滚动光伏预测微网购电：建模与求解</title>
+<script>window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] } };</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 940px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2,h3,h4 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; line-height:1.45; font-size:22px; }
+h2 { margin-top: 28px; }
+p { text-align:justify; margin: 10px 0; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:5px 7px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+img { width:100%; border:1px solid #d8dee9; margin: 6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin: 0 0 22px; }
+.ok { color:#1e8a5a; font-weight:bold; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+ol.alg li { margin: 6px 0; }
+</style></head><body>
+<h1>问题3　基于滚动光伏预测的微网购电与储能协同调度<br/>建模、求解与结果解读</h1><p style="text-align:center;color:#4b5563">Rolling-Horizon MILP　·　请用浏览器打开以渲染公式与图片</p>
+<h2>1　问题含义与三问递进</h2>
+<p>问题3要求：在问题2“日前计划购电 + 实际供电不足时按 5 倍电价紧急购电”的基础上，进一步使用附件3提供的<strong>滚动光伏预测</strong>，并允许在 6:00、12:00、18:00 对<strong>尚未执行</strong>的购电计划进行调整。题目规定每天在</p>
+$$
+s_k\in\{0,6,12,18\}\ \text{h}
+$$
+<p>均可获得未来 24 h 的整点光伏功率预测。经济规则为：</p>
+<ul>
+<li>0:00 的预测用于制定当天<strong>初始计划购电</strong> $G^{(0)}_{d,t}$，按正常电价 $c_t$ 结算；</li>
+<li>若调整后购电量低于原计划，被削减部分按 $0.5c_t$ 计取违约成本（只退回原价的 50%）；</li>
+<li>若调整后购电量高于原计划，新增部分按 $1.5c_t$ 计价；</li>
+<li>若最终实际供电仍低于小区负载，不足部分紧急购电，单价仍为 $5c_t$。</li>
+</ul>
+<p>因此问题3不是一次性日前优化，而是</p>
+<div class="box">日前计划（0:00）→ 滚动修正（6:00 / 12:00 / 18:00）→ 实时补偿（紧急购电）</div>
+<p>的三级决策。与前两问的关系：问题1把一天的电价、负荷、光伏都视为已知，对 144 个 10 min 时段做确定性 MILP；问题2负荷与光伏随日变化且 0:00 不能偷看当天实测，因而用预测 + 紧急购电；问题3则指出 0:00 光伏预测有误差，但日内三次更新通常更准，可以用新预测修正剩余计划。关键不是“有预报就一定改”，而是</p>
+<p><strong>预测精度提高带来的收益，是否足以抵消调整购电产生的违约或溢价成本。</strong></p>
+
+<h2>2　时间尺度与数据映射</h2>
+<h3>2.1　调度时段</h3>
+<p>一天 $N=144$ 个 10 min 时段，</p>
+$$
+t=1,2,\ldots,144
+$$
+<p>依次对应 $00{:}00$–$00{:}10$，$00{:}10$–$00{:}20$，…，$23{:}50$–$24{:}00$。时段长度</p>
+$$
+\Delta t=\frac{10}{60}=\frac16\ \mathrm{h}.
+$$
+<p>附件中负荷、光伏为功率（kW），购电、充放电、紧急购电按题目要求用能量（kWh）：</p>
+$$
+L_{d,t}=P^{\mathrm{load}}_{d,t}\Delta t,\qquad
+S^{\mathrm{act}}_{d,t}=P^{\mathrm{PV,act}}_{d,t}\Delta t.
+$$
+<p>电价 $c_t$ 取附件1，每天同一套分时电价。result3.xlsx 按<strong>行号/列号</strong>填写：模板首列标签若从 0:10–0:20 起，第 1 个数据列仍对应 $t=1$ 即 00:00–00:10，与问题1、2一致。</p>
+<h3>2.2　光伏整点预测到 10 min</h3>
+<p>附件3每天 4 行，分别在 0:00、6:00、12:00、18:00 给出“预报1小时”至“预报24小时”，理解为发布时刻之后第 $h$ 个整点的功率 $\hat P^{\mathrm{PV},(k)}_{d,h}$（kW），$h=1,\ldots,24$。购电在 10 min 网格上进行，采用分段线性插值：以发布时刻已观测到的实际光伏为 $P_0$，令 $P_h=\hat P^{\mathrm{PV},(k)}_{d,h}$，则相邻整点之间第 $m=0,\ldots,6$ 个 10 min 节点</p>
+$$
+\hat P_{h,m}=\Bigl(1-\frac{m}{6}\Bigr)P_h+\frac{m}{6}P_{h+1}.
+$$
+<p>实现上对每个 10 min 时段中点取插值功率，再乘 $\Delta t$ 得到预测电量 $\hat S^{(k)}_{d,t}$。发布时间之前的时段不使用该次预报（非预见性）。若将“预报 $h$ 小时”理解为未来第 $h$ 小时平均功率，也可改成分段常值；只改变数据映射，不改变后面的优化结构。本文统一用分段线性。</p>
+
+<h2>3　符号与参数</h2>
+<table>
+<tr><th>符号</th><th>含义</th><th>单位</th></tr>
+<tr><td>$c_t$</td><td>交易时刻电价（附件1）</td><td>元/kWh</td></tr>
+<tr><td>$L_{d,t}$</td><td>小区负荷时段电量（附件2）</td><td>kWh</td></tr>
+<tr><td>$S^{\mathrm{act}}_{d,t}$</td><td>光伏实际发电时段电量（附件2，仅事后执行）</td><td>kWh</td></tr>
+<tr><td>$\hat S^{(k)}_{d,t}$</td><td>第 $k$ 次滚动光伏预测电量（附件3）</td><td>kWh</td></tr>
+<tr><td>$G^{(0)}_{d,t}$</td><td>0:00 初始计划购电</td><td>kWh</td></tr>
+<tr><td>$G^{(k)}_{d,t}$</td><td>第 $k$ 次调整后的剩余时段购电</td><td>kWh</td></tr>
+<tr><td>$\Delta G^{+,(k)}_{d,t},\Delta G^{-,(k)}_{d,t}$</td><td>相对上一版计划的增购、削减</td><td>kWh</td></tr>
+<tr><td>$C^{(k)}_{d,t},D^{(k)}_{d,t}$</td><td>规划充电、放电</td><td>kWh</td></tr>
+<tr><td>$z^{(k)}_{d,t}$</td><td>充电=1，放电=0</td><td>0-1</td></tr>
+<tr><td>$E^{(k)}_{d,t}$</td><td>储电量（时段始端 $t=0$ 为 0:00）</td><td>kWh</td></tr>
+<tr><td>$S^{\mathrm{use},(k)}_{d,t}$</td><td>规划阶段利用的预测光伏</td><td>kWh</td></tr>
+<tr><td>$H_{d,t}$</td><td>紧急购电</td><td>kWh</td></tr>
+<tr><td>$G^{\mathrm{final}}_{d,t}$</td><td>该时段执行前最后一次有效计划</td><td>kWh</td></tr>
+</table>
+<p>储能参数与题目一致：</p>
+$$
+E_{\min}=1200,\quad E_{\max}=10800,\quad
+\eta_c=\eta_d=0.9,\quad
+P_{\max}=5000\ \mathrm{kW},
+$$
+$$
+Q_{\max}=P_{\max}\Delta t=\frac{5000}{6}=833.3333\ \mathrm{kWh}.
+$$
+<p>2025-01-01 的 0:00：$E_{1,0}=6000$ kWh。问题3不要求每天 $E_{d,144}=E_{d,0}$，全年仿真采用跨日连续</p>
+$$
+E_{d+1,0}=E_{d,144}.
+$$
+
+<h2>4　滚动时域与信息约束</h2>
+<p>四个决策阶段 $k=0,1,2,3$ 对应 0:00、6:00、12:00、18:00。10 min 起点（1-index）为</p>
+$$
+\tau_0=1,\quad \tau_1=37,\quad \tau_2=73,\quad \tau_3=109.
+$$
+<p>第 $k$ 阶段尚未执行时段</p>
+$$
+\mathcal T_k=\{t\mid t\ge \tau_k\}.
+$$
+<p>必须满足：</p>
+<ol>
+<li>已经执行的购电、充放电不得改写（非预见性）；</li>
+<li>滚动优化的初始 SOC 必须用<strong>实际运行</strong>得到的 $E^{\mathrm{real}}_{d,\tau_k}$，而不是 0:00 模型当时预计的 SOC；</li>
+<li>制定计划时禁止使用附件2中尚未发生的实际光伏；附件2光伏只用于事后 10 min 执行与紧急购电。</li>
+</ol>
+<p>负荷：问题3只滚动光伏预报。实现上将附件2当日负荷作为当天已知需求代入能量平衡（与“只更新光伏、负荷按小区用电”的题意一致）。若改为负荷也需预测，只需替换 $L_{d,t}$ 的数据来源，约束形式不变。</p>
+<p>最终执行的正常购电</p>
+$$
+G^{\mathrm{final}}_{d,t}=
+\begin{cases}
+G^{(0)}_{d,t}, & 1\le t<\tau_1,\\
+G^{(1)}_{d,t}, & \tau_1\le t<\tau_2,\\
+G^{(2)}_{d,t}, & \tau_2\le t<\tau_3,\\
+G^{(3)}_{d,t}, & \tau_3\le t\le 144.
+\end{cases}
+$$
+
+<h2>5　第一阶段：0:00 日前计划 MILP</h2>
+<h3>5.1　决策变量</h3>
+<p>对 $t=1,\ldots,144$（实现中再拼接一个 144 时段的次日虚拟日，见第 8 节）：</p>
+$$
+G^{(0)}_{d,t}\ge 0,\ 
+C^{(0)}_{d,t}\ge 0,\ 
+D^{(0)}_{d,t}\ge 0,\ 
+S^{\mathrm{use},(0)}_{d,t}\ge 0,\ 
+z^{(0)}_{d,t}\in\{0,1\},\ 
+E^{(0)}_{d,t}.
+$$
+<h3>5.2　目标函数</h3>
+<p>此时尚未发生调整和紧急购电，只最小化正常计划购电费：</p>
+$$
+\min J^{(0)}_d=\sum_{t=1}^{144} c_t G^{(0)}_{d,t}.
+$$
+<p>（虚拟日部分按同样电价计虚拟购电，只进入求解器，不计入当天 $J^{\mathrm{plan}}$。）</p>
+<h3>5.3　预测条件下的能量平衡</h3>
+$$
+G^{(0)}_{d,t}+S^{\mathrm{use},(0)}_{d,t}+D^{(0)}_{d,t}
+=L_{d,t}+C^{(0)}_{d,t}.
+$$
+<p>即：计划购电 + 预测光伏利用 + 放电 = 负荷 + 充电。光伏利用不超过当时预测</p>
+$$
+0\le S^{\mathrm{use},(0)}_{d,t}\le \hat S^{(0)}_{d,t}.
+$$
+<p>弃光 $\hat S^{(0)}-S^{\mathrm{use},(0)}\ge 0$，避免“光伏大于负荷+可充电上限”时模型无解。</p>
+<h3>5.4　储能动态与容量</h3>
+$$
+E^{(0)}_{d,t+1}
+=E^{(0)}_{d,t}+\eta_c C^{(0)}_{d,t}-\frac{D^{(0)}_{d,t}}{\eta_d}
+=E^{(0)}_{d,t}+0.9C^{(0)}_{d,t}-\frac{D^{(0)}_{d,t}}{0.9},
+$$
+$$
+1200\le E^{(0)}_{d,t}\le 10800,\qquad
+E^{(0)}_{d,0}=E^{\mathrm{real}}_{d,0}.
+$$
+<h3>5.5　充放电功率与互斥</h3>
+$$
+0\le C^{(0)}_{d,t}\le Q_{\max}z^{(0)}_{d,t},\qquad
+0\le D^{(0)}_{d,t}\le Q_{\max}\bigl(1-z^{(0)}_{d,t}\bigr).
+$$
+<p>$z=1$ 只允许充电，$z=0$ 只允许放电，同一 10 min 内不能同时充放。</p>
+
+<h2>6　第二阶段：6:00 / 12:00 / 18:00 滚动调整 MILP</h2>
+<p>以第 $k=1,2,3$ 次更新为例。固定 $t<\tau_k$ 的已执行购电，以及</p>
+$$
+E^{(k)}_{d,\tau_k}=E^{\mathrm{real}}_{d,\tau_k}.
+$$
+<p>对 $t\in\mathcal T_k$ 重新决策 $G^{(k)},C^{(k)},D^{(k)},z^{(k)},S^{\mathrm{use},(k)},E^{(k)}$。</p>
+<h3>6.1　调整量分解</h3>
+$$
+G^{(k)}_{d,t}
+=G^{(k-1)}_{d,t}+\Delta G^{+,(k)}_{d,t}-\Delta G^{-,(k)}_{d,t},
+\qquad
+\Delta G^{+,(k)}_{d,t}\ge 0,\ 
+\Delta G^{-,(k)}_{d,t}\ge 0.
+$$
+<p>最小费用下二者不会同时为正，不必再引入互斥 0-1 变量。</p>
+<h3>6.2　滚动阶段目标</h3>
+<p>上一版计划中未改动部分的 $c_t G^{(k-1)}$ 已经在 $J^{\mathrm{plan}}$ 或此前调整中计过，属于沉没成本。本次只需计增量结算：</p>
+$$
+\min J^{\mathrm{adj},(k)}_d
+=\sum_{t\in\mathcal T_k}
+\Bigl[
+1.5c_t\Delta G^{+,(k)}_{d,t}
+-0.5c_t\Delta G^{-,(k)}_{d,t}
+\Bigr].
+$$
+<p>增购按 1.5 倍付费；削减一项为负，表示取消计划后可获 50% 退款，仍承担 50% 违约。虚拟日时段没有“上一版计划”，按正常电价 $c_t G$ 进入目标，用于给今日末 SOC 赋予次日价值，防止把电池放到 $E_{\min}$ 去套取退款。</p>
+<h3>6.3　新预测下的能量平衡与储能</h3>
+$$
+G^{(k)}_{d,t}+S^{\mathrm{use},(k)}_{d,t}+D^{(k)}_{d,t}
+=L_{d,t}+C^{(k)}_{d,t},
+\qquad
+0\le S^{\mathrm{use},(k)}_{d,t}\le\hat S^{(k)}_{d,t},
+$$
+$$
+E^{(k)}_{d,t+1}=E^{(k)}_{d,t}+0.9C^{(k)}_{d,t}-\frac{D^{(k)}_{d,t}}{0.9},
+$$
+$$
+1200\le E^{(k)}_{d,t}\le 10800,
+$$
+$$
+C^{(k)}_{d,t}\le Q_{\max}z^{(k)}_{d,t},\qquad
+D^{(k)}_{d,t}\le Q_{\max}(1-z^{(k)}_{d,t}),\qquad
+z^{(k)}_{d,t}\in\{0,1\}.
+$$
+
+<h2>7　第三阶段：实际运行与紧急购电</h2>
+<p>每个 10 min 真正执行时，$G^{\mathrm{final}}_{d,t}$ 已锁定，光伏改用附件2实际值。因果规则（不偷看本窗口以后的实测）：</p>
+<ul>
+<li>若 $G^{\mathrm{final}}+S^{\mathrm{act}}\ge L$，多余能量在 $Q_{\max}$ 与容量上限内充电，剩余弃光；</li>
+<li>若仍不足，优先放电（不超过 $Q_{\max}$ 与 $E-E_{\min}$ 对应的可放能量），再不够则紧急购电 $H_{d,t}$。</li>
+</ul>
+<p>能量关系（允许计划购电多余而无法上网售电，故平衡以“供电不低于负荷”为主）：</p>
+$$
+G^{\mathrm{final}}_{d,t}+H_{d,t}+S^{\mathrm{act,use}}_{d,t}+D^{\mathrm{real}}_{d,t}
+\ge
+L_{d,t}+C^{\mathrm{real}}_{d,t},
+\qquad
+0\le S^{\mathrm{act,use}}_{d,t}\le S^{\mathrm{act}}_{d,t}.
+$$
+<p>紧急购电费</p>
+$$
+J^{\mathrm{emg}}_d=\sum_{t=1}^{144}5c_t H_{d,t}.
+$$
+
+<h2>8　全天总费用与 48 h 前瞻</h2>
+$$
+J_d=J^{\mathrm{plan}}_d+J^{\mathrm{adj}}_d+J^{\mathrm{emg}}_d,
+$$
+$$
+J^{\mathrm{plan}}_d=\sum_{t=1}^{144}c_t G^{(0)}_{d,t},
+$$
+$$
+J^{\mathrm{adj}}_d
+=\sum_{k=1}^{3}\sum_{t\in\mathcal T_k}
+\bigl(1.5c_t\Delta G^{+,(k)}_{d,t}-0.5c_t\Delta G^{-,(k)}_{d,t}\bigr).
+$$
+<p>合写为</p>
+$$
+\boxed{
+\min J_d
+=\sum_{t}c_t G^{(0)}_{d,t}
++\sum_{k=1}^{3}\sum_{t\in\mathcal T_k}
+\bigl(1.5c_t\Delta G^{+,(k)}_{t}-0.5c_t\Delta G^{-,(k)}_{t}\bigr)
++\sum_{t}5c_t H_{d,t}.
+}
+$$
+<p>若滚动窗口在 24:00 截断且目标中削减可获退款，求解器会把储能放到下限以取消晚间计划，日末 SOC 失去跨日意义。因此每次 MILP 在剩余今日之后再接 144 个<strong>虚拟次日</strong>时段：负荷、光伏预测用今日序列作持续法（不偷看明日实测），电价仍为附件1。虚拟日购电按 $c_t$ 进入目标，只影响 $E_{d,144}$，不写入 result3。这与问题2用 48 h 滚动前瞻是同一思想。</p>
+
+<h2>9　模型类型与求解</h2>
+<p>连续变量 $G,\Delta G^\pm,C,D,E,S^{\mathrm{use}},H$ 的目标与约束均为线性，仅 $z$ 为 0-1，故每一次滚动都是 MILP。整天是 Rolling-Horizon MILP。每天最多 4 次求解（S3），全年约 1460 次，与附件3 的 1460 组预报一一对应。使用 SciPy <code>milp</code>（HiGHS），相对间隙 $5\times 10^{-4}$。</p>
+
+<h2>10　算法流程</h2>
+<ol class="alg">
+<li>令 $E_{1,0}=6000$。</li>
+<li>对每个日期 $d=1,\ldots,365$：读取当日负荷、电价、0:00 的 24 h 光伏预报，插值到 10 min。</li>
+<li>解 0:00 MILP（含虚拟次日），得到 $G^{(0)}$，写入“计划购电量”。</li>
+<li>用实际光伏执行 0:00–6:00，更新 $E^{\mathrm{real}}_{6{:}00}$，必要时记 $H$。</li>
+<li>若策略包含 6:00：读新预报，从真实 SOC 解剩余时段滚动 MILP，得到 $G^{(1)}$ 与 $\Delta G^{\pm,(1)}$；执行 6:00–12:00。</li>
+<li>12:00、18:00 同样：锁历史、用真 SOC、用新预报、只改 $\mathcal T_k$。</li>
+<li>执行 18:00–24:00。汇总 $J^{\mathrm{plan}},J^{\mathrm{adj}},J^{\mathrm{emg}}$。令 $E_{d+1,0}=E_{d,144}$。</li>
+</ol>
+<p>result3：“计划购电量”始终填 $G^{(0)}$，不得被后续调整覆盖；“调整购电量”填 $G^{\mathrm{final}}$；充放电与紧急购电填实际执行量；连续紧急时段合并。</p>
+<h2>11　全年数值结果（策略 S3：四个预报时刻都用）</h2><div class='box'>365 天总费用 <strong>14698933.11</strong> 元，其中计划 13835120.09、调整 773292.90、紧急 90520.12。初始计划电量 22874534.47 kWh，最终执行计划 22800308.19 kWh，紧急电量 13992.00 kWh，276 天出现紧急购电。2–12 月（result3 模板区间）费用 13107438.31 元。</div><p>调整费用可正可负：净增购为主时为正，净削减退款超过增购溢价时为负。它不是“手续费绝对值”，而是相对 $G^{(0)}$ 已经按 $c_t$ 计费之后的增量结算。</p><img src="problem3/outputs/figures/q3_fig01_price.png" alt="图1　日内分时电价（附件1，每天相同）"/><p class="cap">图1　日内分时电价（附件1，每天相同）</p>
+<img src="problem3/outputs/figures/q3_fig02_daily_cost.png" alt="图2　逐日计划费用、调整费用、紧急费用与总费用"/><p class="cap">图2　逐日计划费用、调整费用、紧急费用与总费用</p>
+<img src="problem3/outputs/figures/q3_fig03_cost_split.png" alt="图3　全年费用结构"/><p class="cap">图3　全年费用结构</p>
+<img src="problem3/outputs/figures/q3_fig04_daily_emergency.png" alt="图4　逐日紧急购电量"/><p class="cap">图4　逐日紧急购电量</p>
+<img src="problem3/outputs/figures/q3_fig05_dQ.png" alt="图5　逐日调整后购电量相对 0:00 计划的变化"/><p class="cap">图5　逐日调整后购电量相对 0:00 计划的变化</p>
+<img src="problem3/outputs/figures/q3_fig06_pv_mae.png" alt="图6　滚动光伏预报 MAE"/><p class="cap">图6　滚动光伏预报 MAE</p>
+<img src="problem3/outputs/figures/q3_fig07_soc_year.png" alt="图7　逐日 0:00 / 24:00 储电量"/><p class="cap">图7　逐日 0:00 / 24:00 储电量</p>
+<img src="problem3/outputs/figures/q3_fig08_monthly.png" alt="图8　分月总费用与紧急费用"/><p class="cap">图8　分月总费用与紧急费用</p>
+<img src="problem3/outputs/figures/q3_fig09_ablation.png" alt="图9　策略 S0–S3 全年总费用"/><p class="cap">图9　策略 S0–S3 全年总费用</p>
+<img src="problem3/outputs/figures/q3_fig10_ablation_H.png" alt="图10　策略 S0–S3 紧急购电量"/><p class="cap">图10　策略 S0–S3 紧急购电量</p>
+<img src="problem3/outputs/figures/q3_fig11_four_dG.png" alt="图11　指定四日购电调整量 $\Delta G$"/><p class="cap">图11　指定四日购电调整量 $\Delta G$</p>
+<img src="problem3/outputs/figures/q3_fig12_four_pv.png" alt="图12　指定四日光伏实际与 0:00 / 12:00 预报"/><p class="cap">图12　指定四日光伏实际与 0:00 / 12:00 预报</p>
+<img src="problem3/outputs/figures/q3_fig13_four_soc.png" alt="图13　指定四日 SOC"/><p class="cap">图13　指定四日 SOC</p>
+<img src="problem3/outputs/figures/q3_fig14_four_cost.png" alt="图14　指定四日费用构成"/><p class="cap">图14　指定四日费用构成</p>
+<h3>11.1　光伏预报误差</h3><p>同一目标时段上，用更晚发布的预报替换更早预报，MAE 应下降。比较时只取该预报发布之后的 10 min，避免把 12:00 预报尚未覆盖的上午当成“预报为零”。18:00 预报不覆盖 07:00–18:00，表中为空。19:00 后光伏接近 0，MAE 约 $10^{-2}$ kW 量级，经济意义很小。</p><table><tr><th>时段</th><th>MAE_00:00</th><th>MAE_06:00</th><th>MAE_12:00</th><th>MAE_18:00</th></tr><tr><td>07:00-18:00</td><td class='n'>417.4589</td><td class='n'>271.1855</td><td class='n'>170.0083</td><td></td></tr><tr><td>13:00-18:00</td><td class='n'>403.8843</td><td class='n'>279.1977</td><td class='n'>177.3581</td><td></td></tr><tr><td>19:00-24:00</td><td class='n'>0.0448</td><td class='n'>0.0456</td><td class='n'>0.0452</td><td class='n'>0.0455</td></tr></table><h2>12　指定四日（2025-03-20、06-21、09-23、12-21）</h2><p>表1按题目关心的 6 个 10 min 给出<strong>调整后</strong>购电量及全天总购电费 $J_d$；补充表给出相对 $G^{(0)}$ 的代数差。若干午间时段购电为 0，是储能放电与光伏共同覆盖负荷，不是缺数。对比应看全天电量、费用和 $\Delta G$ 曲线，而不是只看恰好为 0 的那几个格子。</p><h3>表1　指定时段调整后购电量与全天购电费</h3><table><tr><th>日期</th><th>10:00-10:10</th><th>12:00-12:10</th><th>14:00-14:10</th><th>16:00-16:10</th><th>18:00-18:10</th><th>20:00-20:10</th><th>全天购电量(调整后)</th><th>全天购电费</th></tr><tr><td>2025-03-20</td><td class='n'>0.0000</td><td class='n'>485.7161</td><td class='n'>0.0000</td><td class='n'>508.5897</td><td class='n'>697.9973</td><td class='n'>0.0000</td><td class='n'>65970.3619</td><td class='n'>46469.3509</td></tr><tr><td>2025-06-21</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>57.4589</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>32797.6008</td><td class='n'>18492.0337</td></tr><tr><td>2025-09-23</td><td class='n'>0.0000</td><td class='n'>261.8151</td><td class='n'>0.0000</td><td class='n'>549.6818</td><td class='n'>764.3298</td><td class='n'>0.0000</td><td class='n'>66263.7292</td><td class='n'>43113.3926</td></tr><tr><td>2025-12-21</td><td class='n'>0.0000</td><td class='n'>940.8767</td><td class='n'>0.0000</td><td class='n'>794.9726</td><td class='n'>715.4144</td><td class='n'>0.0000</td><td class='n'>93932.1934</td><td class='n'>61107.7922</td></tr></table><h3>表1补充　相对 0:00 计划的购电调整量（kWh）</h3><table><tr><th>日期</th><th>10:00-10:10</th><th>12:00-12:10</th><th>14:00-14:10</th><th>16:00-16:10</th><th>18:00-18:10</th><th>20:00-20:10</th><th>全天购电量变化</th></tr><tr><td>2025-03-20</td><td class='n'>0.0000</td><td class='n'>-53.8218</td><td class='n'>0.0000</td><td class='n'>-140.0720</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-1749.4626</td></tr><tr><td>2025-06-21</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-39.3421</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-76.5262</td></tr><tr><td>2025-09-23</td><td class='n'>0.0000</td><td class='n'>-96.8023</td><td class='n'>0.0000</td><td class='n'>-60.4129</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-2136.2636</td></tr><tr><td>2025-12-21</td><td class='n'>0.0000</td><td class='n'>-40.4096</td><td class='n'>0.0000</td><td class='n'>15.4374</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>298.9937</td></tr></table><h3>表2　分时段充放电与首末 SOC（实际执行）</h3><table><tr><th>日期</th><th>时间段</th><th>充电量</th><th>放电量</th><th>0:00储电量</th><th>24:00储电量</th></tr><tr><td>2025-03-20</td><td>0:00-4:00</td><td class='n'>1665.6081</td><td class='n'>0.0000</td><td class='n'>8550.9527</td><td class='n'>8550.9024</td></tr><tr><td>2025-03-20</td><td>4:00-8:00</td><td class='n'>868.6241</td><td class='n'>6103.2350</td><td></td><td></td></tr><tr><td>2025-03-20</td><td>8:00-12:00</td><td class='n'>3190.8103</td><td class='n'>2565.3505</td><td></td><td></td></tr><tr><td>2025-03-20</td><td>12:00-16:00</td><td class='n'>6873.8175</td><td class='n'>433.4227</td><td></td><td></td></tr><tr><td>2025-03-20</td><td>16:00-20:00</td><td class='n'>0.9963</td><td class='n'>5482.0203</td><td></td><td></td></tr><tr><td>2025-03-20</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>2236.9004</td><td></td><td></td></tr><tr><td>2025-06-21</td><td>0:00-4:00</td><td class='n'>293.7054</td><td class='n'>0.0000</td><td class='n'>2439.4512</td><td class='n'>2700.0002</td></tr><tr><td>2025-06-21</td><td>4:00-8:00</td><td class='n'>1200.8621</td><td class='n'>1721.8096</td><td></td><td></td></tr><tr><td>2025-06-21</td><td>8:00-12:00</td><td class='n'>9920.6221</td><td class='n'>0.0000</td><td></td><td></td></tr><tr><td>2025-06-21</td><td>12:00-16:00</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td></td><td></td></tr><tr><td>2025-06-21</td><td>16:00-20:00</td><td class='n'>59.1485</td><td class='n'>6240.8242</td><td></td><td></td></tr><tr><td>2025-06-21</td><td>20:00-24:00</td><td class='n'>1666.6669</td><td class='n'>2447.0861</td><td></td><td></td></tr><tr><td>2025-09-23</td><td>0:00-4:00</td><td class='n'>1665.5548</td><td class='n'>0.0000</td><td class='n'>8551.0007</td><td class='n'>8550.7157</td></tr><tr><td>2025-09-23</td><td>4:00-8:00</td><td class='n'>839.7943</td><td class='n'>6387.8298</td><td></td><td></td></tr><tr><td>2025-09-23</td><td>8:00-12:00</td><td class='n'>5470.0541</td><td class='n'>1896.6157</td><td></td><td></td></tr><tr><td>2025-09-23</td><td>12:00-16:00</td><td class='n'>4944.9777</td><td class='n'>465.4828</td><td></td><td></td></tr><tr><td>2025-09-23</td><td>16:00-20:00</td><td class='n'>0.7902</td><td class='n'>5886.0700</td><td></td><td></td></tr><tr><td>2025-09-23</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>2445.4067</td><td></td><td></td></tr><tr><td>2025-12-21</td><td>0:00-4:00</td><td class='n'>1666.6596</td><td class='n'>0.0000</td><td class='n'>8550.0064</td><td class='n'>8550.0052</td></tr><tr><td>2025-12-21</td><td>4:00-8:00</td><td class='n'>1666.7271</td><td class='n'>1491.3088</td><td></td><td></td></tr><tr><td>2025-12-21</td><td>8:00-12:00</td><td class='n'>5349.2546</td><td class='n'>7481.2224</td><td></td><td></td></tr><tr><td>2025-12-21</td><td>12:00-16:00</td><td class='n'>7422.3444</td><td class='n'>2058.4234</td><td></td><td></td></tr><tr><td>2025-12-21</td><td>16:00-20:00</td><td class='n'>1.1130</td><td class='n'>5787.4605</td><td></td><td></td></tr><tr><td>2025-12-21</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>2842.5258</td><td></td><td></td></tr></table><h3>表3　紧急购电连续时段</h3><table><tr><th>日期</th><th>紧急购电时间段</th><th>紧急购电量</th></tr><tr><td>2025-03-20</td><td>09:10-10:00</td><td class='n'>212.0267</td></tr><tr><td>2025-06-21</td><td>20:30-20:40</td><td class='n'>38.8105</td></tr><tr><td>2025-09-23</td><td>无</td><td class='n'>0.0000</td></tr><tr><td>2025-12-21</td><td>无</td><td class='n'>0.0000</td></tr></table><h3>费用分解</h3><table><tr><th>日期</th><th>计划_10:00-10:10</th><th>调整_10:00-10:10</th><th>计划_12:00-12:10</th><th>调整_12:00-12:10</th><th>计划_14:00-14:10</th><th>调整_14:00-14:10</th><th>计划_16:00-16:10</th><th>调整_16:00-16:10</th><th>计划_18:00-18:10</th><th>调整_18:00-18:10</th><th>计划_20:00-20:10</th><th>调整_20:00-20:10</th><th>全天计划购电量</th><th>全天调整后购电量</th><th>计划费用</th><th>调整费用</th><th>紧急费用</th><th>全天购电费</th></tr><tr><td>2025-03-20</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>539.5379</td><td class='n'>485.7161</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>648.6617</td><td class='n'>508.5897</td><td class='n'>697.9973</td><td class='n'>697.9973</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>67719.8244</td><td class='n'>65970.3619</td><td class='n'>40949.1785</td><td class='n'>4491.9380</td><td class='n'>1028.2344</td><td class='n'>46469.3509</td></tr><tr><td>2025-06-21</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>96.8009</td><td class='n'>57.4589</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>32874.1270</td><td class='n'>32797.6008</td><td class='n'>17905.9189</td><td class='n'>315.3729</td><td class='n'>270.7419</td><td class='n'>18492.0337</td></tr><tr><td>2025-09-23</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>358.6174</td><td class='n'>261.8151</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>610.0947</td><td class='n'>549.6818</td><td class='n'>764.3298</td><td class='n'>764.3298</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>68399.9928</td><td class='n'>66263.7292</td><td class='n'>42610.4437</td><td class='n'>502.9489</td><td class='n'>0.0000</td><td class='n'>43113.3926</td></tr><tr><td>2025-12-21</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>981.2863</td><td class='n'>940.8767</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>779.5353</td><td class='n'>794.9726</td><td class='n'>715.4144</td><td class='n'>715.4144</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>93633.1997</td><td class='n'>93932.1934</td><td class='n'>59646.5085</td><td class='n'>1461.2837</td><td class='n'>0.0000</td><td class='n'>61107.7922</td></tr></table><h3>2025-03-20</h3><img src="problem3/outputs/figures/q3_day_03-20_G.png" alt="2025-03-20　0:00 计划购电与调整后购电"/><p class="cap">2025-03-20　0:00 计划购电与调整后购电</p>
+<img src="problem3/outputs/figures/q3_day_03-20_dG.png" alt="2025-03-20　购电调整量（正=增购，负=削减）"/><p class="cap">2025-03-20　购电调整量（正=增购，负=削减）</p>
+<img src="problem3/outputs/figures/q3_day_03-20_pv.png" alt="2025-03-20　光伏实际与四次滚动预报"/><p class="cap">2025-03-20　光伏实际与四次滚动预报</p>
+<img src="problem3/outputs/figures/q3_day_03-20_soc.png" alt="2025-03-20　储能 SOC"/><p class="cap">2025-03-20　储能 SOC</p>
+<img src="problem3/outputs/figures/q3_day_03-20_CD.png" alt="2025-03-20　实际充放电"/><p class="cap">2025-03-20　实际充放电</p>
+<img src="problem3/outputs/figures/q3_day_03-20_H.png" alt="2025-03-20　紧急购电"/><p class="cap">2025-03-20　紧急购电</p>
+<h3>2025-06-21</h3><img src="problem3/outputs/figures/q3_day_06-21_G.png" alt="2025-06-21　0:00 计划购电与调整后购电"/><p class="cap">2025-06-21　0:00 计划购电与调整后购电</p>
+<img src="problem3/outputs/figures/q3_day_06-21_dG.png" alt="2025-06-21　购电调整量（正=增购，负=削减）"/><p class="cap">2025-06-21　购电调整量（正=增购，负=削减）</p>
+<img src="problem3/outputs/figures/q3_day_06-21_pv.png" alt="2025-06-21　光伏实际与四次滚动预报"/><p class="cap">2025-06-21　光伏实际与四次滚动预报</p>
+<img src="problem3/outputs/figures/q3_day_06-21_soc.png" alt="2025-06-21　储能 SOC"/><p class="cap">2025-06-21　储能 SOC</p>
+<img src="problem3/outputs/figures/q3_day_06-21_CD.png" alt="2025-06-21　实际充放电"/><p class="cap">2025-06-21　实际充放电</p>
+<img src="problem3/outputs/figures/q3_day_06-21_H.png" alt="2025-06-21　紧急购电"/><p class="cap">2025-06-21　紧急购电</p>
+<h3>2025-09-23</h3><img src="problem3/outputs/figures/q3_day_09-23_G.png" alt="2025-09-23　0:00 计划购电与调整后购电"/><p class="cap">2025-09-23　0:00 计划购电与调整后购电</p>
+<img src="problem3/outputs/figures/q3_day_09-23_dG.png" alt="2025-09-23　购电调整量（正=增购，负=削减）"/><p class="cap">2025-09-23　购电调整量（正=增购，负=削减）</p>
+<img src="problem3/outputs/figures/q3_day_09-23_pv.png" alt="2025-09-23　光伏实际与四次滚动预报"/><p class="cap">2025-09-23　光伏实际与四次滚动预报</p>
+<img src="problem3/outputs/figures/q3_day_09-23_soc.png" alt="2025-09-23　储能 SOC"/><p class="cap">2025-09-23　储能 SOC</p>
+<img src="problem3/outputs/figures/q3_day_09-23_CD.png" alt="2025-09-23　实际充放电"/><p class="cap">2025-09-23　实际充放电</p>
+<img src="problem3/outputs/figures/q3_day_09-23_H.png" alt="2025-09-23　紧急购电"/><p class="cap">2025-09-23　紧急购电</p>
+<h3>2025-12-21</h3><img src="problem3/outputs/figures/q3_day_12-21_G.png" alt="2025-12-21　0:00 计划购电与调整后购电"/><p class="cap">2025-12-21　0:00 计划购电与调整后购电</p>
+<img src="problem3/outputs/figures/q3_day_12-21_dG.png" alt="2025-12-21　购电调整量（正=增购，负=削减）"/><p class="cap">2025-12-21　购电调整量（正=增购，负=削减）</p>
+<img src="problem3/outputs/figures/q3_day_12-21_pv.png" alt="2025-12-21　光伏实际与四次滚动预报"/><p class="cap">2025-12-21　光伏实际与四次滚动预报</p>
+<img src="problem3/outputs/figures/q3_day_12-21_soc.png" alt="2025-12-21　储能 SOC"/><p class="cap">2025-12-21　储能 SOC</p>
+<img src="problem3/outputs/figures/q3_day_12-21_CD.png" alt="2025-12-21　实际充放电"/><p class="cap">2025-12-21　实际充放电</p>
+<img src="problem3/outputs/figures/q3_day_12-21_H.png" alt="2025-12-21　紧急购电"/><p class="cap">2025-12-21　紧急购电</p>
+<h2>13　是否需要 6:00、12:00、18:00 预报</h2><p>仅有精度结论不够，必须看全年费用。定义</p><table><tr><th>策略</th><th>使用的预报</th></tr><tr><td>S0</td><td>仅 0:00，日内不调整</td></tr><tr><td>S1</td><td>0:00 + 6:00</td></tr><tr><td>S2</td><td>0:00 + 6:00 + 12:00</td></tr><tr><td>S3</td><td>四个时刻都调整（正式填表策略）</td></tr></table><p>若 $J_{S1}<J_{S0}$ 则 6:00 有经济价值；若 $J_{S2}<J_{S1}$ 则 12:00 仍有价值；若 $J_{S3}\approx J_{S2}$ 或 $J_{S3}>J_{S2}$，则 18:00 后光伏已近于 0，再调整可能得不偿失。</p><table><tr><th>策略</th><th>预报时刻</th><th>计划费用</th><th>调整费用</th><th>紧急费用</th><th>总费用</th><th>紧急电量kWh</th><th>相对S0节省</th><th>相对S0节省%</th></tr><tr><td>S0</td><td>仅0:00</td><td class='n'>13835426.6567</td><td class='n'>0.0000</td><td class='n'>2805288.6381</td><td class='n'>16640715.2948</td><td class='n'>421437.2657</td><td class='n'>0.0000</td><td class='n'>0.0000</td></tr><tr><td>S1</td><td>0+6</td><td class='n'>13835426.6567</td><td class='n'>304833.5752</td><td class='n'>1864569.6343</td><td class='n'>16004829.8662</td><td class='n'>276093.7964</td><td class='n'>635885.4287</td><td class='n'>3.8213</td></tr><tr><td>S2</td><td>0+6+12</td><td class='n'>13835426.6567</td><td class='n'>343982.9327</td><td class='n'>1598510.0010</td><td class='n'>15777919.5904</td><td class='n'>235861.4934</td><td class='n'>862795.7044</td><td class='n'>5.1848</td></tr><tr><td>S3</td><td>0+6+12+18</td><td class='n'>13835120.0946</td><td class='n'>773292.9036</td><td class='n'>90520.1164</td><td class='n'>14698933.1146</td><td class='n'>13992.0037</td><td class='n'>1941782.1802</td><td class='n'>11.6689</td></tr></table><p>S0 的紧急费用显著更高，说明只用 0:00 光伏预报会把误差留给 5 倍紧急购电；引入 6:00、12:00 后紧急电量下降，调整溢价通常仍低于所避免的紧急成本。18:00 是否保留以表中 $J_{S3}$ 与 $J_{S2}$ 的差为准。</p><h2>14　约束回代检验</h2><p class='ok'>全部通过：15/15。</p><table><tr><th>检验项</th><th>通过</th><th>说明</th></tr><tr><td>首日 E0=6000</td><td>是</td><td>E00=6000.000000</td></tr><tr><td>跨日 SOC 连续</td><td>是</td><td>max|Δ|=0.000e+00</td></tr><tr><td>SOC 下界</td><td>是</td><td>min=1200.0000</td></tr><tr><td>SOC 上界</td><td>是</td><td>max=10800.0000</td></tr><tr><td>充电 ≤ Qmax</td><td>是</td><td>maxC=833.3333</td></tr><tr><td>放电 ≤ Qmax</td><td>是</td><td>maxD=833.3333</td></tr><tr><td>不同时充放</td><td>是</td><td>min(C,D) max=0.000e+00</td></tr><tr><td>光伏利用 ≤ 实际</td><td>是</td><td>max Suse-S=0.000e+00</td></tr><tr><td>G,C,D,H ≥ 0</td><td>是</td><td>nonneg</td></tr><tr><td>SOC 递推</td><td>是</td><td>max|r|=9.095e-13</td></tr><tr><td>能量平衡（允许多余计划购电）</td><td>是</td><td>min(bal)=-2.274e-13, max=8.487e-02</td></tr><tr><td>计划费用复算</td><td>是</td><td>plan_cost</td></tr><tr><td>调整费用复算</td><td>是</td><td>adj_cost</td></tr><tr><td>紧急费用复算</td><td>是</td><td>em_cost</td></tr><tr><td>result3 计划首格对齐</td><td>是</td><td>核对334天, 不一致0</td></tr></table><img src="problem3/outputs/verification/figures/v_balance.png" alt="执行能量平衡残差"/><p class="cap">执行能量平衡残差</p>
+<img src="problem3/outputs/verification/figures/v_soc.png" alt="SOC 递推残差"/><p class="cap">SOC 递推残差</p>
+<p>result3.xlsx：计划表填 $G^{(0)}$，调整表填 $G^{\mathrm{final}}$，充放电与紧急购电为实际执行。代码：<code>problem3/solve_q3.py</code>。</p></body></html>

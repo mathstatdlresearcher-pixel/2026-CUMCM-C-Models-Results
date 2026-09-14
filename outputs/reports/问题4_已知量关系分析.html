@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题4　已知量关系分析</title>
+<script>window.MathJax={tex:{inlineMath:[['$','$']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 920px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; font-size:21px; line-height:1.45; }
+p { text-align:justify; }
+table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:4px 6px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+img { width:100%; border:1px solid #d8dee9; margin:6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin:0 0 16px; }
+</style></head><body>
+<h1>问题4　已知量关系分析<br/>实时电价 $c_{d,t}$ 如何进入模型</h1>
+<p>只分析题目给出的外生量。问题4 相对问题2、3，已知量上多出来的是附件4 的逐日、逐 10 min 电价 $c_{d,t}$。负荷、光伏实际仍是附件2，滚动预报仍是附件3（只用于 4-3）。购电、充放电、紧急购电是决策量，这里不算相关。</p>
+<div class="box">
+<b>已知量</b>　$c_{d,t}$（附件4），对照 $c_t$（附件1）；$L_{d,t},P_{d,t}$；$N_{d,t}=L-P$；4-3 另有 $\hat P^{(k)}$。<br/>
+<b>不做</b>　$G,C,D,H,\Delta G$ 的相关。
+</div>
+
+<h2>1　电价本身：均值几乎一样，峰更尖、谷更深</h2>
+<img src="problem4/outputs/var_known/figures/q4k_fig01_price_profile.png" alt="图1　附件1 固定曲线 vs 附件4 同时钟点均值与全年包络"/><p class="cap">图1　附件1 固定曲线 vs 附件4 同时钟点均值与全年包络</p>
+
+<p>附件1：0.3713–1.3952，均值 0.7662，标准差 0.3133。
+附件4：0.0076–1.7936，均值 0.7662（与附件1 只差约 $10^{-7}$），标准差 0.3407。
+骨架仍是夜低晚高，但同一时刻不同日可以从接近 0 拉到 1.8。日均电价相邻日相关 0.506，相邻两日整条曲线平均相关 0.978，说明次日价格有持续性，48 h 前瞻用 $c_{d+1,t}$ 有数据依据。</p>
+<div class="box">对建模：不能再写 $c_t$，必须写 $c_{d,t}$。5 倍、1.5 倍、0.5 倍都跟当天该 10 min 走。储能的谷充窗口按当天实时低价段找，不是附件1 的固定谷段。</div>
+
+<h2>2　实时电价与负荷、光伏、净负荷</h2>
+<img src="problem4/outputs/var_known/figures/q4k_fig02_corr.png" alt="图2　附件4 电价与供需全年相关"/><p class="cap">图2　附件4 电价与供需全年相关</p>
+
+<table><tr><th>关系</th><th>pearson</th><th>pearson_p</th><th>spearman</th><th>spearman_p</th></tr><tr><td>附件4电价–负荷</td><td class='n'>0.5077</td><td class='n'>0.0000</td><td class='n'>0.5798</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–光伏</td><td class='n'>0.0284</td><td class='n'>0.0000</td><td class='n'>0.1894</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–净负荷</td><td class='n'>0.2602</td><td class='n'>0.0000</td><td class='n'>0.2624</td><td class='n'>0.0000</td></tr><tr><td>附件1电价–负荷</td><td class='n'>0.3064</td><td class='n'>0.0000</td><td class='n'>0.3978</td><td class='n'>0.0000</td></tr><tr><td>附件1电价–光伏</td><td class='n'>0.0809</td><td class='n'>0.0000</td><td class='n'>0.2888</td><td class='n'>0.0000</td></tr><tr><td>附件1电价–净负荷</td><td class='n'>0.0797</td><td class='n'>0.0000</td><td class='n'>0.0381</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–负荷(白天)</td><td class='n'>0.4678</td><td class='n'>0.0000</td><td class='n'>0.4983</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–光伏(白天)</td><td class='n'>-0.4483</td><td class='n'>0.0000</td><td class='n'>-0.4333</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–净负荷(白天)</td><td class='n'>0.6732</td><td class='n'>0.0000</td><td class='n'>0.6450</td><td class='n'>0.0000</td></tr><tr><td>附件4电价–净负荷(夜间)</td><td class='n'>0.5918</td><td class='n'>0.0000</td><td class='n'>0.7145</td><td class='n'>0.0000</td></tr><tr><td>负荷–光伏</td><td class='n'>0.5728</td><td class='n'>0.0000</td><td class='n'>0.5794</td><td class='n'>0.0000</td></tr></table>
+<p>附件4–负荷 $r=0.508$（附件1–负荷为 0.306），附件4–光伏 $r=0.028$，附件4–净负荷 $r=0.260$。白天附件4–光伏为负（-0.448），价升时光伏已过峰。相关都不高：电价不是负荷或净负荷的函数，三者必须同时进入模型。</p>
+<div class="box">对建模：$c_{d,t}$ 进目标与调整/紧急结算；$L,P$ 进平衡（4-2 计划用预测，4-3 光伏用滚动预报）。不要把购电量回归成电价的函数。</div>
+
+<h2>3　缺口时段更贵：总账为什么会高于问题2、3</h2>
+<img src="problem4/outputs/var_known/figures/q4k_fig04_hist.png" alt="图4　净负荷为正 / 为负时，附件4 电价的分布"/><p class="cap">图4　净负荷为正 / 为负时，附件4 电价的分布</p>
+
+<img src="problem4/outputs/var_known/figures/q4k_fig05_month.png" alt="图5　分月算术均价与“缺口时均价”"/><p class="cap">图5　分月算术均价与“缺口时均价”</p>
+
+<p>光伏盖不住负荷时（$N>0$），附件4 均价 0.7901 元/kWh；光伏富余时（$N<0$）均价只有 0.6659。附件1 上这两个数是 0.7679 与 0.7590。微网必须在缺口时段买电或放电，实时电价恰好在这些时段更贵，所以<strong>同一套购电量按附件4 结算会贵一截</strong>。这是已知量结构，不是优化把费用做大。重算的意义是：在已经更贵的价上，把 $G_t$ 挪到当天相对更低的格子。</p>
+<table><tr><th>月</th><th>附件4均价</th><th>附件4最低</th><th>附件4最高</th><th>r_电价4_负荷</th><th>r_电价4_净负荷</th><th>缺口时均价</th><th>富余时均价</th></tr><tr><td>1.0</td><td class='n'>0.8596</td><td class='n'>0.2432</td><td class='n'>1.6401</td><td class='n'>0.5255</td><td class='n'>0.1664</td><td class='n'>0.8674</td><td class='n'>0.7516</td></tr><tr><td>2.0</td><td class='n'>0.7696</td><td class='n'>0.2247</td><td class='n'>1.4470</td><td class='n'>0.5281</td><td class='n'>0.2124</td><td class='n'>0.7892</td><td class='n'>0.6586</td></tr><tr><td>3.0</td><td class='n'>0.7255</td><td class='n'>0.0913</td><td class='n'>1.3583</td><td class='n'>0.4892</td><td class='n'>0.2286</td><td class='n'>0.7460</td><td class='n'>0.6500</td></tr><tr><td>4.0</td><td class='n'>0.6988</td><td class='n'>0.0076</td><td class='n'>1.3932</td><td class='n'>0.4385</td><td class='n'>0.2327</td><td class='n'>0.7206</td><td class='n'>0.6375</td></tr><tr><td>5.0</td><td class='n'>0.6912</td><td class='n'>0.0389</td><td class='n'>1.4134</td><td class='n'>0.4782</td><td class='n'>0.2487</td><td class='n'>0.7122</td><td class='n'>0.6377</td></tr><tr><td>6.0</td><td class='n'>0.7663</td><td class='n'>0.1708</td><td class='n'>1.4509</td><td class='n'>0.5877</td><td class='n'>0.2200</td><td class='n'>0.7881</td><td class='n'>0.6580</td></tr><tr><td>7.0</td><td class='n'>0.8301</td><td class='n'>0.1337</td><td class='n'>1.7936</td><td class='n'>0.5017</td><td class='n'>0.2309</td><td class='n'>0.8547</td><td class='n'>0.7389</td></tr><tr><td>8.0</td><td class='n'>0.7865</td><td class='n'>0.0665</td><td class='n'>1.7686</td><td class='n'>0.4684</td><td class='n'>0.2896</td><td class='n'>0.8156</td><td class='n'>0.7042</td></tr><tr><td>9.0</td><td class='n'>0.7203</td><td class='n'>0.0376</td><td class='n'>1.4221</td><td class='n'>0.4932</td><td class='n'>0.3003</td><td class='n'>0.7467</td><td class='n'>0.6408</td></tr><tr><td>10.0</td><td class='n'>0.7203</td><td class='n'>0.0390</td><td class='n'>1.3793</td><td class='n'>0.4590</td><td class='n'>0.2805</td><td class='n'>0.7459</td><td class='n'>0.6356</td></tr><tr><td>11.0</td><td class='n'>0.7610</td><td class='n'>0.2088</td><td class='n'>1.4244</td><td class='n'>0.5457</td><td class='n'>0.2527</td><td class='n'>0.7823</td><td class='n'>0.6480</td></tr><tr><td>12.0</td><td class='n'>0.8617</td><td class='n'>0.2354</td><td class='n'>1.6698</td><td class='n'>0.5355</td><td class='n'>0.1720</td><td class='n'>0.8675</td><td class='n'>0.7619</td></tr></table>
+<div class="box">对建模：比较问题4 与问题2、3 的总费用，比的是两套电价，不能写成“4-2 比问题2 更差”。应另报“同一套附件4 下，重算计划相对沿用旧计划是否更便宜”。</div>
+
+<h2>4　指定四日：峰顶时刻与附件1 错位</h2>
+<img src="problem4/outputs/var_known/figures/q4k_fig03_four.png" alt="图3　四日净负荷与两条电价"/><p class="cap">图3　四日净负荷与两条电价</p>
+
+<table><tr><th>日期</th><th>最低</th><th>最高</th><th>日均</th><th>缺口时均价</th><th>富余时均价</th><th>与附件1曲线相关</th></tr><tr><td>2025-03-20</td><td class='n'>0.2794</td><td class='n'>1.3228</td><td class='n'>0.7786</td><td class='n'>0.7895</td><td class='n'>0.7268</td><td class='n'>0.9865</td></tr><tr><td>2025-06-21</td><td class='n'>0.1828</td><td class='n'>1.2633</td><td class='n'>0.6095</td><td class='n'>0.6229</td><td class='n'>0.5851</td><td class='n'>0.9514</td></tr><tr><td>2025-09-23</td><td class='n'>0.3271</td><td class='n'>1.3866</td><td class='n'>0.7818</td><td class='n'>0.8038</td><td class='n'>0.6817</td><td class='n'>0.9863</td></tr><tr><td>2025-12-21</td><td class='n'>0.3905</td><td class='n'>1.5659</td><td class='n'>0.9101</td><td class='n'>0.9101</td><td></td><td class='n'>0.9565</td></tr></table>
+<p>四日附件4 与附件1 曲线相关大约 0.7–0.9，同向但峰顶时刻、峰值不同。净负荷过零的地方，有的碰上附件4 高峰（12-21），有的碰上相对低价（06-21）。这就是 18:00 / 20:00 购电格子会从问题2 的值挪走的数据原因。</p>
+<div class="box">对建模：每天 0:00 用当天 $c_{d,\cdot}$ 重解 MILP；4-3 滚动时调整费也乘当天剩余时段的 $c_{d,t}$。虚日用 $c_{d+1,t}$（或当日价格延续）给日末 SOC 定价。</div>
+
+<h2>5　对问题4 模型的直接对应</h2>
+<table>
+<tr><th>已知量上的事实</th><th>模型里怎么写</th></tr>
+<tr><td>附件4 与附件1 均值几乎相同、峰谷更极端</td><td>$c_t\to c_{d,t}$；紧急 $5c_{d,t}$，增购 $1.5c_{d,t}$，削减 $0.5c_{d,t}$</td></tr>
+<tr><td>同时钟点跨日包络很宽</td><td>每天单独优化，不能套一条谷充峰放时刻表</td></tr>
+<tr><td>电价与 $L,N$ 相关弱</td><td>电价进目标，负荷光伏进平衡，三者并列</td></tr>
+<tr><td>缺口时段实时电价系统性更高</td><td>解释跨电价总账上升；储能尽量把购电移出这些格子</td></tr>
+<tr><td>相邻日电价曲线相关约 0.98</td><td>48 h 前瞻拼接 $c_{d+1}$ 合理</td></tr>
+<tr><td>负荷、光伏、滚动预报与问题2、3 相同</td><td>4-2 沿用问题2 预测，4-3 沿用附件3 滚动，只换价格</td></tr>
+</table>
+<p>结论：问题4 的已知量升级是<strong>电价从“每天一条”变成“每天一条不同的实时曲线”</strong>。供需侧关系沿用问题2、3，不必重做一套负荷光伏理论。</p>
+<p>表与图：<code>problem4/outputs/var_known/</code>。</p>
+</body></html>

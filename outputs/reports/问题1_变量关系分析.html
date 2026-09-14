@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题1　变量关系分析</title>
+<script>window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] } };</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 920px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2,h3 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; font-size:21px; line-height:1.45; }
+p { text-align:justify; }
+img { width:100%; border:1px solid #d8dee9; margin:6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin:0 0 18px; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:5px 7px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+</style></head><body>
+<h1>问题1　变量关系分析</h1>
+<p>问题1只有附件1一条确定日曲线，变量不要一股脑做“相关矩阵”。先分清<strong>已知量</strong>和<strong>决策量</strong>，再分三步：对齐看相位、算相关、用最优解看响应。相关只说明同步变化，不代替功率平衡和容量约束。</p>
+
+<div class="box">
+<b>已知量（外生）</b>　电价 $c_t$，负荷 $L_t$，光伏预测 $P_t$（附件1，144 个 10 min）。派生净负荷 $N_t=L_t-P_t$。<br/>
+<b>决策量（内生）</b>　购电 $G_t$，充电 $C_t$，放电 $D_t$，储电量 $E_t$。它们由 MILP 算出来，不能和 $c_t,L_t,P_t$ 平级当成“原始数据相关”。
+</div>
+
+<h2>1　做法</h2>
+<p><strong>第一步，时序对齐。</strong>把 $c_t,L_t,P_t$ 画在同一横轴上，看峰谷谁先谁后。这是关系分析的主体，比相关系数更接近调度含义。</p>
+<p><strong>第二步，相关与散点。</strong>对 $(c,L)$、$(c,P)$、$(L,P)$、$(c,N)$ 计算 Pearson（线性）和 Spearman（单调）。夜间 $P_t\equiv 0$ 会稀释全天相关，因此同时报告 06:00–18:00 子样本。散点用颜色区分昼夜，避免把夜间零光伏当成“负荷与光伏无关”。</p>
+<p><strong>第三步，决策响应。</strong>用问题1最优日程，看 $G_t,C_t,D_t$ 对 $c_t$ 和 $N_t$ 的散点。预期：电价高则少购、多放；净负荷为负则充电。若符号相反，模型或数据解释有问题。</p>
+<p>能量平衡始终是</p>
+$$
+L_t\Delta t = G_t + P_t\Delta t + D_t - C_t
+$$
+<p>（若考虑利用率与弃光，以求解文件为准）。相关不能替代这道式子。</p>
+
+<h2>2　已知量：相位与相关</h2>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig02_triple.png" alt="图2　电价、负荷、光伏日内对齐"/><p class="cap">图2　电价、负荷、光伏日内对齐</p>
+
+<p>图2：负荷早晨抬升、傍晚仍高；光伏正午单峰、夜间为 0；电价夜间低、傍晚最高。三者不是同一条曲线的缩放，所以必须同时进入模型，不能用负荷或电价单独代表供需。</p>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig01_corr.png" alt="图1　已知量 Pearson 相关矩阵"/><p class="cap">图1　已知量 Pearson 相关矩阵</p>
+
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig03_scatter.png" alt="图3　已知量两两散点"/><p class="cap">图3　已知量两两散点</p>
+
+<p>全天 Pearson：电价–负荷 $r=0.443$（晚峰重叠，同向但不强）；电价–光伏 $r=0.084$（全天几乎不线性相关）；负荷–光伏 $r=0.856$（二者都在白天抬升）。白天子样本里，电价–光伏转为负（$r=-0.442$）：电价爬升时光伏已过正午峰值。电价–净负荷全天只有 $r=0.093$，<strong>几乎不相关</strong>——夜间“价低但缺电”与傍晚“价高且缺电”把线性相关冲掉了。因此不能根据 $r(c,N)$ 判断要不要储能，必须看图4、图5 的分时段符号。</p>
+<table><tr><th>关系</th><th>Pearson</th><th>p</th><th>Spearman</th><th>p</th><th>Pearson 0.05</th></tr>
+<tr><td>电价–负荷</td><td class='n'>0.443</td><td class='n'>2.80e-08</td><td class='n'>0.598</td><td class='n'>2.48e-15</td><td>显著</td></tr><tr><td>电价–光伏</td><td class='n'>0.084</td><td class='n'>3.19e-01</td><td class='n'>0.312</td><td class='n'>1.43e-04</td><td>不显著</td></tr><tr><td>负荷–光伏</td><td class='n'>0.856</td><td class='n'>1.30e-42</td><td class='n'>0.871</td><td class='n'>9.65e-46</td><td>显著</td></tr><tr><td>电价–净负荷</td><td class='n'>0.093</td><td class='n'>2.66e-01</td><td class='n'>0.194</td><td class='n'>2.00e-02</td><td>不显著</td></tr><tr><td>负荷–净负荷</td><td class='n'>-0.706</td><td class='n'>5.41e-23</td><td class='n'>-0.528</td><td class='n'>1.06e-11</td><td>显著</td></tr><tr><td>光伏–净负荷</td><td class='n'>-0.970</td><td class='n'>3.23e-89</td><td class='n'>-0.758</td><td class='n'>4.20e-28</td><td>显著</td></tr><tr><td>电价–负荷(白天)</td><td class='n'>0.004</td><td class='n'>9.71e-01</td><td class='n'>0.282</td><td class='n'>1.62e-02</td><td>不显著</td></tr><tr><td>电价–光伏(白天)</td><td class='n'>-0.442</td><td class='n'>1.03e-04</td><td class='n'>-0.392</td><td class='n'>6.52e-04</td><td>显著</td></tr><tr><td>负荷–光伏(白天)</td><td class='n'>0.651</td><td class='n'>5.78e-10</td><td class='n'>0.550</td><td class='n'>5.50e-07</td><td>显著</td></tr>
+</table>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig04_price_net.png" alt="图4　电价–净负荷（颜色为时刻）"/><p class="cap">图4　电价–净负荷（颜色为时刻）</p>
+
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig05_net.png" alt="图5　净负荷时序"/><p class="cap">图5　净负荷时序</p>
+
+<p>图4：暖色（傍晚）在右上——价高、$N_t>0$；冷色夜间在左上——价低、同样 $N_t>0$；正午在零轴下方。同一“缺电”对应两种电价，相关会被抵消，调度含义却不同：夜间该充电（谷价购电），傍晚该放电。图5 一天内 $N_t$ 先正后负再正，储能跨过零轴。</p>
+<div class="box">结论：已知量是相位错开，不是一条曲线的共线。$c_t$ 进目标，$L_t,P_t$ 进平衡；相关弱的地方更要靠分时段图，不能只报一个 $r$。</div>
+
+<h2>3　决策量：对电价和净负荷的响应</h2>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig06_decision_price.png" alt="图6　购电/充/放对电价"/><p class="cap">图6　购电/充/放对电价</p>
+
+<p>图6：电价–购电 $r=-0.555$，电价–充电 $r=-0.446$，电价–放电 $r=0.592$。充电堆在低价区，放电出现在高价区，购电避免顶着峰价大买。这与目标 $\min\sum c_t G_t$ 一致。</p>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig07_decision_net.png" alt="图7　购电/充/放对净负荷"/><p class="cap">图7　购电/充/放对净负荷</p>
+
+<p>图7：净负荷为正时购电、放电更频繁；净负荷为负时充电增加。决策同时听 $c_t$ 和 $N_t$，不是只跟其中一个。</p>
+<img src="problem1/outputs/var_relations/figures/"q1_rel_fig08_soc.png" alt="图8　储电量轨迹"/><p class="cap">图8　储电量轨迹</p>
+
+<p>图8 的 $E_t$ 是上述关系的积分：谷段和正午上升，晚峰下降。</p>
+<table><tr><th>关系</th><th>Pearson</th><th>p</th><th>Spearman</th><th>p</th><th>Pearson 0.05</th></tr>
+<tr><td>电价–购电</td><td class='n'>-0.555</td><td class='n'>5.52e-13</td><td class='n'>-0.533</td><td class='n'>5.85e-12</td><td>显著</td></tr><tr><td>电价–充电</td><td class='n'>-0.446</td><td class='n'>2.15e-08</td><td class='n'>-0.349</td><td class='n'>1.85e-05</td><td>显著</td></tr><tr><td>电价–放电</td><td class='n'>0.592</td><td class='n'>5.61e-15</td><td class='n'>0.572</td><td class='n'>7.26e-14</td><td>显著</td></tr><tr><td>净负荷–购电</td><td class='n'>0.438</td><td class='n'>3.89e-08</td><td class='n'>0.458</td><td class='n'>8.04e-09</td><td>显著</td></tr><tr><td>净负荷–充电</td><td class='n'>-0.338</td><td class='n'>3.37e-05</td><td class='n'>-0.601</td><td class='n'>1.61e-15</td><td>显著</td></tr><tr><td>净负荷–放电</td><td class='n'>0.292</td><td class='n'>3.90e-04</td><td class='n'>0.193</td><td class='n'>2.02e-02</td><td>显著</td></tr>
+</table>
+<div class="box">结论：最优解的符号与“低充高放、缺则购、余则存”一致，变量关系与目标、约束闭合。问题1不必再引入回归分析预测 $G_t$；$G_t$ 由优化给出。</div>
+
+<h2>4　论文里怎么写（一段即可）</h2>
+<p>先写图2的相位：负荷与电价晚峰重叠、光伏正午独峰、夜间光伏为零。再报电价–负荷、电价–净负荷为正，电价–光伏较弱或为负。然后定义 $N_t=L_t-P_t$，指出一天内正负号切换，从而引出储能。最后用图6、图7证明最优 $G,C,D$ 对 $c_t,N_t$ 的响应方向正确。不要把 $G_t$ 与 $L_t$ 的高相关解释成“购电由负荷回归得到”——那是平衡式的结果，不是统计发现。</p>
+<p>表：<code>problem1/outputs/var_relations/相关系数.csv</code>。图：同目录 <code>figures/</code>。</p>
+</body></html>

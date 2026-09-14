@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题3　已知量关系分析</title>
+<script>window.MathJax={tex:{inlineMath:[['$','$']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 920px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; font-size:21px; line-height:1.45; }
+p { text-align:justify; }
+table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:4px 6px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+img { width:100%; border:1px solid #d8dee9; margin:6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin:0 0 16px; }
+</style></head><body>
+<h1>问题3　已知量关系分析<br/>滚动光伏预报如何进入模型</h1>
+<p>只分析题目给出的外生量，不含购电、充放电、紧急购电。问题3的已知量比问题2多一类：附件3在 0:00 / 6:00 / 12:00 / 18:00 发布的未来 24 h 光伏预报 $\hat P^{(k)}$。电价仍是附件1 的 $c_t$，负荷与光伏实际仍是附件2 的 $L_{d,t},P_{d,t}$。</p>
+<div class="box">
+<b>已知量</b>　$c_t$，$L_{d,t}$，$P_{d,t}$，$\hat P^{(k)}_{d,t}$（$k\in\{0,6,12,18\}$）。<br/>
+<b>不做</b>　$G,\Delta G,C,D,H$ 的相关。
+</div>
+
+<h2>1　电价、负荷、实际光伏（与问题2同一批数）</h2>
+<img src="problem3/outputs/var_known/figures/q3k_fig04_triple.png" alt="图4　电价每天相同；负荷/实际光伏随日变；虚线是 0:00 预报均值"/><p class="cap">图4　电价每天相同；负荷/实际光伏随日变；虚线是 0:00 预报均值</p>
+
+<p>全年：电价–负荷 $r=0.306$，负荷–实际光伏 $r=0.573$，电价–净负荷 $r=0.080$。光伏始终约 44.79% 的 10 min 为 0（夜间）；附件3 预报零值约占 50.01%，同样集中在夜段，应保留。净负荷约 19.27% 的时段为负。</p>
+<div class="box">对建模：目标里的单价仍是 $c_t$（问题3 正式策略不用附件4）。平衡里负荷用当天 $L_{d,t}$（题只滚动光伏）。计划阶段禁止写入尚未发生的实际光伏，只用当时已发布的 $\hat P^{(k)}$。</div>
+
+<h2>2　滚动预报与实际：越接近运行时刻越准</h2>
+<img src="problem3/outputs/var_known/figures/q3k_fig01_mae.png" alt="图1　滚动预报 MAE（只在该预报覆盖的目标时段上比）"/><p class="cap">图1　滚动预报 MAE（只在该预报覆盖的目标时段上比）</p>
+
+<table><tr><th>发布时间</th><th>发布后MAE_kW</th><th>r_发布后</th></tr><tr><td>00:00</td><td class='n'>201.2770</td><td class='n'>0.9917</td></tr><tr><td>06:00</td><td class='n'>175.3359</td><td class='n'>0.9958</td></tr><tr><td>12:00</td><td class='n'>92.2878</td><td class='n'>0.9987</td></tr><tr><td>18:00</td><td class='n'>6.6478</td><td class='n'>0.9603</td></tr></table>
+<p>白天 07:00–18:00：0:00 预报 MAE 约 417 kW，6:00 降到 271 kW，12:00 再降到 170 kW。19:00 后四次预报 MAE 都在 $0.045$ kW，光伏已接近 0，再报一次没有功率意义。18:00 预报不覆盖上午，表中白天格为空是覆盖问题，不是缺数。</p>
+<img src="problem3/outputs/var_known/figures/q3k_fig02_scatter.png" alt="图2　预报对实际：12:00 比 0:00 更贴对角线"/><p class="cap">图2　预报对实际：12:00 比 0:00 更贴对角线</p>
+
+<p>发布之后的时段上，预报与实际的 Pearson：0:00 为 0.992，6:00 为 0.996，12:00 为 0.999。18:00 为 0.960，相关可以很高，但对象已是夜间近零功率。相邻两次预报彼此也高度相关（0:00 与 6:00 在 6 点后 $r=0.988$），说明更新是修正而不是另画一条无关曲线。</p>
+<div class="box">对建模：6:00、12:00 的信息增量足够大，值得对<strong>尚未执行</strong>的 $G_t$ 付 1.5 / 0.5 倍调整成本。18:00 预报对白天 MAE 无贡献，经济价值主要在傍晚剩余计划（是否用，由费用消融判断，不由相关单独决定）。已执行时段不能改，因为那部分预报在当时并不存在。</div>
+
+<h2>3　指定四日：预报误差的方向决定要不要改计划</h2>
+<img src="problem3/outputs/var_known/figures/q3k_fig03_four.png" alt="图3　实际（黑）、0:00 预报（灰）、12:00 预报（橙，仅午后）"/><p class="cap">图3　实际（黑）、0:00 预报（灰）、12:00 预报（橙，仅午后）</p>
+
+<p>灰线与黑线的面积差，就是 0:00 MILP 用错的光伏能量。橙线贴黑线时，12:00 应削减或增补剩余购电。夏至峰值高、冬至矮，与问题2 的季节判断一致；问题3 多出来的是<strong>同一天内预报被替换</strong>。</p>
+<div class="box">对建模：0:00 解 $\min\sum c_t G_t^{(0)}$，光伏用 $\hat P^{(0)}$。其后每次更新只对 $t\ge\tau_k$ 引入 $\Delta G^\pm$，目标为 $1.5c\Delta G^+-0.5c\Delta G^-$。执行层才换成 $P$ 实际，缺口 $5c$ 紧急购电。48 h 前瞻防止为拿退款把储能当晚放空。</div>
+
+<h2>4　对问题3模型的直接对应</h2>
+<table>
+<tr><th>已知量上的事实</th><th>模型里怎么写</th></tr>
+<tr><td>电价仍是附件1 一条曲线</td><td>计划、调整、紧急都乘 $c_t$，不是附件4</td></tr>
+<tr><td>负荷随日变，题不要求滚动负荷</td><td>当天 $L_{d,t}$ 作已知需求进平衡</td></tr>
+<tr><td>实际光伏夜间为 0、白天有误差</td><td>实际 $P$ 只用于执行，不进 0:00/滚动计划</td></tr>
+<tr><td>6:00、12:00 预报白天明显变准</td><td>允许在对应时刻重解剩余时段</td></tr>
+<tr><td>18:00 预报几乎只管夜间近零光伏</td><td>是否第三次调整用 S0–S3 费用消融，不用 MAE 单独拍板</td></tr>
+<tr><td>相邻预报高度相关</td><td>调整是修正 $G$，不是推倒重来；未改部分按原 $c_t$ 已结算</td></tr>
+<tr><td>预报零值也在夜间</td><td>与实际一样保留 0，不作缺失删除</td></tr>
+</table>
+<p>结论：问题3 相对问题2，已知量上多的是<strong>一天四次、越晚越准的光伏预报</strong>。模型升级因此是滚动时域 + 不对称调整电价，而不是改电价通道或改负荷数据源。</p>
+<p>表与图：<code>problem3/outputs/var_known/</code>。</p>
+</body></html>

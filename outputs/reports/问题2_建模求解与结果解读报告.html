@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题2 微网日前计划购电与紧急购电</title>
+<script>window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] } };</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.8 "Times New Roman","SimSun",serif; max-width: 940px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2,h3 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; line-height:1.45; }
+p { text-align:justify; margin: 10px 0; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:5px 7px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+img { width:100%; border:1px solid #d8dee9; margin: 6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin: 0 0 22px; }
+.ok { color:#1e8a5a; font-weight:bold; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+</style></head><body>
+<h1>问题2　微网日前计划购电与紧急购电<br/>第一套方案：凸组合预测 + 两阶段随机 MILP</h1><p style="text-align:center;color:#4b5563">每天 0:00 制定计划 · 按计划量计费 · 缺口按 5 倍电价紧急购电 · 请用浏览器打开以渲染公式</p><h2>1　题意与计费规则</h2><p>问题 2 要求：每天的电价结构与附件 1 相同；小区负荷和光伏随日期变化，数据在附件 2；微网向小区供电不得低于负荷；若计划购电、光伏与储能仍不够，则向大电网<strong>紧急购电</strong>，单价为该时段正常电价的 5 倍。除紧急购电外，其余购电费一律按<strong>日前计划购电量</strong>结算，即使实际没有用完也要付。计划必须在当天 0:00 做出，因此不能使用当天尚未发生的真实负荷/光伏。</p>
+<p>记第 $d$ 天第 $t$ 个 $10\,\mathrm{min}$ 时段的正常电价为 $c_t$（元/kWh），计划购电量为 $q_{d,t}$（kWh），
+实际紧急购电量为 $h_{d,t}$（kWh）。当天购电费为</p>
+$$
+J_d
+=
+\sum_{t=1}^{144} c_t\, q_{d,t}
++
+\sum_{t=1}^{144} 5\, c_t\, h_{d,t}.
+$$
+<p>第一项与实际用电无关，这就是“报童模型”里的过量订货成本；第二项是缺货的 5 倍惩罚。临界分位为</p>
+$$
+\mathbb{P}(X_t\le q_t^\star)
+=
+\frac{5c_t-c_t}{5c_t}
+=
+0.8,
+$$
+<p>即每个时段的计划购电量应覆盖净需求分布大约 80% 分位。储能把各时段的 $X_t$ 耦合在一起，因此不能把 144 个报童问题拆开，必须与充放电联合优化。</p>
+<h2>2　符号与数据</h2>
+<p>时段长度 $\Delta t=1/6\,\mathrm{h}$。附件中的功率（kW）一律乘 $\Delta t$ 变成电量（kWh），与 result2.xlsx 单位一致。</p>
+$$
+\ell_{d,t}=L_{d,t}\Delta t=\frac{L_{d,t}}{6},\qquad
+p_{d,t}^{\mathrm{PV}}=\frac{P_{d,t}^{\mathrm{PV}}}{6}.
+$$
+<p>储能参数与问题 1 相同：$E_{\min}=1200\,\mathrm{kWh}$，$E_{\max}=10800\,\mathrm{kWh}$，
+$P_{\max}=5000\,\mathrm{kW}$，故单时段最大充放电量 $B_{\max}=5000/6=833.3333\,\mathrm{kWh}$，
+$\eta_c=\eta_d=0.9$。2025-01-01 的 0:00 储电量取题目给定的 $E_{1,0}=6000\,\mathrm{kWh}$。</p>
+<p>时间对齐：附件 1、2 中标记为 00:10 的列表示区间 $[00{:}00,00{:}10)$，最后一列对应 $23{:}50$–$24{:}00$。
+提交 result2 时按<strong>行号/列号</strong>与附件对齐，不依赖模板里略有错位的文字标签。</p>
+<table>
+<tr><th>符号</th><th>含义</th><th>单位</th><th>来源</th></tr>
+<tr><td>$c_t$</td><td>日内电价，每天重复</td><td>元/kWh</td><td>附件1 第2列</td></tr>
+<tr><td>$L_{d,t},P_{d,t}^{\mathrm{PV}}$</td><td>实际负荷、实际光伏</td><td>kW</td><td>附件2</td></tr>
+<tr><td>$\widehat L_{d,t},\widehat P_{d,t}^{\mathrm{PV}}$</td><td>0:00 日前预测</td><td>kW</td><td>仅用第 $1,\ldots,d-1$ 天</td></tr>
+<tr><td>$q_{d,t}$</td><td>计划购电量（第一阶段）</td><td>kWh</td><td>决策</td></tr>
+<tr><td>$b_{d,t}^{c},b_{d,t}^{d}$</td><td>计划充电、放电</td><td>kWh</td><td>决策</td></tr>
+<tr><td>$z_{d,t}$</td><td>充电=1 / 放电=0</td><td>—</td><td>0-1 变量</td></tr>
+<tr><td>$E_{d,t}$</td><td>时段结束储电量，$t=0$ 为 0:00</td><td>kWh</td><td>状态</td></tr>
+<tr><td>$g_{d,t}^{(s)},h_{d,t}^{(s)},r_{d,t}^{(s)}$</td><td>场景 $s$ 下实际用计划电、紧急购电、弃电</td><td>kWh</td><td>第二阶段</td></tr>
+</table>
+<h2>3　日前预测（禁止未来信息）</h2>
+<p>在第 $d$ 天 0:00，只用已经结束的第 $1,\ldots,d-1$ 天。负荷预测为非负凸组合</p>
+$$
+\widehat L_{d,t}
+=
+\alpha_1 L_{d-1,t}
++
+\alpha_2 L_{d-7,t}
++
+\alpha_3 \bar L_{d,t}^{(7)}
++
+\alpha_4 \bar L_{d,t}^{(28)},
+$$
+<p>其中 $\alpha_i\ge 0$、$\sum\alpha_i=1$。$\bar L^{(7)}$、$\bar L^{(28)}$ 分别是过去 7 天、28 天同一时刻的平均。
+权重用 $d$ 之前最近约 60 天对四个特征做非负最小二乘再归一化，并每周更新。光伏同构，权重为 $\beta$，预测后截断到 $\ge 0$。</p>
+<p>1 月 1 日无 2025 年历史，用附件 1 的典型日型作为气候态先验（不是当天真实曲线）。
+光伏残差取相反分位，专门构造“负荷偏高、光伏偏低”的压力场景，概率</p>
+$$
+\pi=(0.20,\ 0.30,\ 0.50),
+$$
+<p>把质量放在高净需求一侧，逼近报童模型临界分位 $0.8$。
+小区负荷均值约数千 kW，MAE 绝对数到一两百 kW 并不表示预测失败，相对误差用 $\mathrm{nMAE}=\mathrm{MAE}/\bar L$。
+当前负荷 MAE 为 $218.69\,\mathrm{kW}$（约占均值 4.73\%），
+光伏 MAE 为 $155.87\,\mathrm{kW}$。预测与当天真实值不同，没有把附件 2 当天数据喂给 0:00 优化器。</p>
+<h2>4　两阶段随机 MILP 与 48 小时滚动前瞻</h2>
+<p>问题 2 没有要求每天 $E_{d,0}=E_{d,144}$。主模型采用跨日连续</p>
+$$
+E_{d+1,0}=E_{d,144},\qquad E_{1,0}=6000.
+$$
+<p>若只优化当天 24 h，求解器会在 24:00 把电池放到接近下界，把成本转嫁给次日早上。因此每天在 0:00 求解 <strong>48 h</strong> 时域，
+变量覆盖 $t=1,\ldots,288$，但只把前 144 个时段的 $q,b^{c},b^{d}$ 当作当天计划执行；第二天的虚拟调度只给日末储电量定价。
+第二天负荷/光伏仍用“今天的预测 + 减半残差”，<strong>不读取</strong> $d+1$ 的真实附件 2。</p>
+<p><strong>第一阶段</strong>（here-and-now，对场景不变）：$q_t,b_t^{c},b_t^{d},z_t,E_t$。</p>
+<p><strong>第二阶段</strong>（wait-and-see）：每个场景 $s$ 的 $g_t^{(s)}\le q_t$、$h_t^{(s)}$、$r_t^{(s)}$。</p>
+<p>场景能量平衡（电量，kWh）</p>
+$$
+g_t^{(s)}+h_t^{(s)}+p_t^{\mathrm{PV},(s)}+b_t^{d}
+=
+\ell_t^{(s)}+b_t^{c}+r_t^{(s)}.
+$$
+<p>储能</p>
+$$
+E_t=E_{t-1}+\eta_c b_t^{c}-\frac{b_t^{d}}{\eta_d},
+\qquad
+1200\le E_t\le 10800,
+$$
+$$
+0\le b_t^{c}\le B_{\max} z_t,
+\qquad
+0\le b_t^{d}\le B_{\max}(1-z_t),
+\qquad
+z_t\in\{0,1\}.
+$$
+<p>目标（只对 48 h 计期望紧急费用，执行时只采用前 24 h 的 $q$）</p>
+$$
+\min
+\sum_{t=1}^{288} c_t q_t
++
+\sum_{s=1}^{S}\pi_s\sum_{t=1}^{288} 5 c_t h_t^{(s)}.
+$$
+<p>这是混合整数线性规划。用 SciPy 接口调用 HiGHS，相对间隙 $2\times 10^{-4}$。从 1 月 1 日滚动到 12 月 31 日，共 365 次；
+result2 模板从 2 月 1 日开始，但 1 月必须算，否则 2 月 1 日的 $E_0$ 没有来源。</p>
+<h2>5　实际运行回测</h2>
+<p>计划一旦锁定，$b^{c},b^{d}$ 按计划执行（日前策略，不在日内根据真实负荷再改充放电）。记实际净需求</p>
+$$
+D_{d,t}^{\mathrm{act}}
+=
+\ell_{d,t}+b_{d,t}^{c}-p_{d,t}^{\mathrm{PV}}-b_{d,t}^{d}.
+$$
+$$
+g_{d,t}=\min\{q_{d,t},\ \max(D_{d,t}^{\mathrm{act}},0)\},\qquad
+h_{d,t}=\max\{0,\ D_{d,t}^{\mathrm{act}}-q_{d,t}\}.
+$$
+<p>连续 $h_{d,t}>10^{-6}$ 的 10 min 段合并成一条紧急购电记录，写入 result2 第三张表。</p>
+<h2>6　全年结果总览</h2>
+<div class="box">
+全年（含 1 月，用于 SOC 衔接）计划购电量 $26910711.72$ kWh，
+计划购电费 $16672240.97$ 元，
+紧急购电量 $288808.13$ kWh，
+紧急购电费 $1145381.97$ 元，
+<strong>总购电费 $17817622.94$ 元</strong>。
+出现紧急购电的天数 327/365。
+<br/>2 月 1 日–12 月 31 日（与 result2 一致）：计划购电量 $23835378.63$ kWh，
+总购电费 $15422750.33$ 元，紧急电量 $189124.53$ kWh。
+</div>
+<p>紧急电量约占计划电量的 $1.07\%$，但紧急费用约占计划费用的 $6.87\%$，
+这正是 5 倍电价放大缺口的结果。模型宁可在谷价多计划一些电，也不在峰价紧急买入。</p>
+<img src="problem2/outputs/figures/q2_fig01_price.png" alt="图1　附件1 日内电价，365 天重复使用。"/><p class="cap">图1　附件1 日内电价，365 天重复使用。</p>
+<img src="problem2/outputs/figures/q2_fig02_daily_cost.png" alt="图2　逐日总购电费用（计划+紧急）。冬季明显高于光伏充足的夏半年。"/><p class="cap">图2　逐日总购电费用（计划+紧急）。冬季明显高于光伏充足的夏半年。</p>
+<img src="problem2/outputs/figures/q2_fig03_daily_emergency.png" alt="图3　逐日紧急购电量。尖峰对应预测严重偏低或连续阴天。"/><p class="cap">图3　逐日紧急购电量。尖峰对应预测严重偏低或连续阴天。</p>
+<img src="problem2/outputs/figures/q2_fig04_cost_split.png" alt="图4　全年费用构成：计划购电费为主，紧急购电费是尾部风险。"/><p class="cap">图4　全年费用构成：计划购电费为主，紧急购电费是尾部风险。</p>
+<img src="problem2/outputs/figures/q2_fig05_soc_year.png" alt="图5　每天 0:00 储电量。跨日连续，不再强制回到 6000。"/><p class="cap">图5　每天 0:00 储电量。跨日连续，不再强制回到 6000。</p>
+<img src="problem2/outputs/figures/q2_fig06_mae_load.png" alt="图6　负荷日前预测 MAE。节假日和换季时误差增大。"/><p class="cap">图6　负荷日前预测 MAE。节假日和换季时误差增大。</p>
+<img src="problem2/outputs/figures/q2_fig07_mae_pv.png" alt="图7　光伏日前预测 MAE。"/><p class="cap">图7　光伏日前预测 MAE。</p>
+<h2>7　论文表：指定四日（表1 / 表2 / 表3 格式）</h2><p>题目要求按问题 1 的表 1、表 2 格式给出 2025-03-20、2025-06-21、2025-09-23、2025-12-21 的计划，并按表 3 格式给出紧急购电。六个 10 min 对应下标 $t=61,73,85,97,109,121$（从 1 计）。</p><h3>7.1　表1 格式：指定时段计划购电量与全天费用</h3><table><tr><th>日期</th><th>10:00-10:10</th><th>12:00-12:10</th><th>14:00-14:10</th><th>16:00-16:10</th><th>18:00-18:10</th><th>20:00-20:10</th><th>全天计划购电量</th><th>全天购电费</th><th>其中计划费用</th><th>其中紧急费用</th></tr><tr><td>2025-03-20</td><td class='n'>0.0</td><td class='n'>729.1551</td><td class='n'>0.0</td><td class='n'>590.8494</td><td class='n'>717.0742</td><td class='n'>0.0</td><td class='n'>78074.0644</td><td class='n'>48729.1224</td><td class='n'>48167.5617</td><td class='n'>561.5606</td></tr><tr><td>2025-06-21</td><td class='n'>0.0</td><td class='n'>0.0</td><td class='n'>0.0</td><td class='n'>300.2184</td><td class='n'>556.475</td><td class='n'>0.0</td><td class='n'>44121.5962</td><td class='n'>26595.2156</td><td class='n'>26580.9416</td><td class='n'>14.274</td></tr><tr><td>2025-09-23</td><td class='n'>0.0</td><td class='n'>565.0176</td><td class='n'>0.0</td><td class='n'>587.7062</td><td class='n'>773.8865</td><td class='n'>0.0</td><td class='n'>73056.3838</td><td class='n'>48244.0666</td><td class='n'>45260.5226</td><td class='n'>2983.5439</td></tr><tr><td>2025-12-21</td><td class='n'>0.0</td><td class='n'>1017.8097</td><td class='n'>0.0</td><td class='n'>839.4547</td><td class='n'>749.0562</td><td class='n'>0.0</td><td class='n'>103203.0337</td><td class='n'>67308.863</td><td class='n'>66662.8841</td><td class='n'>645.9789</td></tr></table><p>春分、秋分、冬至的 10:00 与 14:00、20:00 计划购电常为 0：要么光伏已覆盖并在充电，要么高价时段由放电承担。12:00 电价最低（约 0.4411 元/kWh），冬至该时段计划购电超过 $1000$ kWh，同时满功率充电，这是典型的谷价囤电。夏至光伏最强，全天计划购电量只有冬至的约四成，紧急购电几乎为 0。</p><h3>7.2　表2 格式：4 小时充放电与日初/日末储电</h3><table><tr><th>日期</th><th>时间段</th><th>充电量</th><th>放电量</th><th>0:00储电量</th><th>24:00储电量</th></tr><tr><td>2025-03-20</td><td>0:00-4:00</td><td class='n'>1666.6667</td><td class='n'>0.0000</td><td class='n'>8550.0000</td><td class='n'>8550.0000</td></tr><tr><td>2025-03-20</td><td>4:00-8:00</td><td class='n'>1666.6667</td><td class='n'>4294.7751</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-03-20</td><td>8:00-12:00</td><td class='n'>5836.7205</td><td class='n'>4785.5508</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-03-20</td><td>12:00-16:00</td><td class='n'>5872.3104</td><td class='n'>1078.9891</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-03-20</td><td>16:00-20:00</td><td class='n'>0.0000</td><td class='n'>5645.9274</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-03-20</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>2994.0726</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-06-21</td><td>0:00-4:00</td><td class='n'>428.5632</td><td class='n'>0.0000</td><td class='n'>2834.5177</td><td class='n'>2773.4152</td></tr><tr><td>2025-06-21</td><td>4:00-8:00</td><td class='n'>835.8365</td><td class='n'>2448.5966</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-06-21</td><td>8:00-12:00</td><td class='n'>6332.2950</td><td class='n'>0.0000</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-06-21</td><td>12:00-16:00</td><td class='n'>4276.8000</td><td class='n'>0.0000</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-06-21</td><td>16:00-20:00</td><td class='n'>0.0000</td><td class='n'>5598.0530</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-06-21</td><td>20:00-24:00</td><td class='n'>1748.2392</td><td class='n'>3041.9470</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-09-23</td><td>0:00-4:00</td><td class='n'>1666.6667</td><td class='n'>0.0000</td><td class='n'>8550.0000</td><td class='n'>8550.0000</td></tr><tr><td>2025-09-23</td><td>4:00-8:00</td><td class='n'>833.3333</td><td class='n'>5764.6549</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-09-23</td><td>8:00-12:00</td><td class='n'>6013.1723</td><td class='n'>2880.3406</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-09-23</td><td>12:00-16:00</td><td class='n'>5016.4712</td><td class='n'>289.0157</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-09-23</td><td>16:00-20:00</td><td class='n'>0.0000</td><td class='n'>5807.2873</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-09-23</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>2832.7127</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-12-21</td><td>0:00-4:00</td><td class='n'>1666.6667</td><td class='n'>0.0000</td><td class='n'>8550.0000</td><td class='n'>8550.0000</td></tr><tr><td>2025-12-21</td><td>4:00-8:00</td><td class='n'>1666.6667</td><td class='n'>1508.3333</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-12-21</td><td>8:00-12:00</td><td class='n'>5833.3333</td><td class='n'>7806.6667</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-12-21</td><td>12:00-16:00</td><td class='n'>8223.1952</td><td class='n'>2745.7881</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-12-21</td><td>16:00-20:00</td><td class='n'>0.0000</td><td class='n'>5583.0022</td><td class='n'></td><td class='n'></td></tr><tr><td>2025-12-21</td><td>20:00-24:00</td><td class='n'>8166.6667</td><td class='n'>3056.9978</td><td class='n'></td><td class='n'></td></tr></table><p>夜间 $0{:}00$–$4{:}00$ 几乎只充不放；傍晚 $16{:}00$–$20{:}00$ 充电为 0、集中放电；$20{:}00$–$24{:}00$ 先放高峰再在谷价回充。夏至日初储电量较低（约 2835 kWh），因为前一日光伏多、不必囤太多电；春秋冬三日日初/日末都在 8550 kWh 附近，这是 48 h 前瞻给次日早高峰预留的电量，而不是被强制回到 6000。</p><h3>7.3　表3 格式：合并后的紧急购电时段</h3><table><tr><th>日期</th><th>紧急购电时间段</th><th>紧急购电量 (kWh)</th></tr><tr><td>2025-03-20</td><td>01:00-01:30</td><td class='n'>105.5587</td></tr><tr><td>2025-03-20</td><td>03:10-03:30</td><td class='n'>32.8419</td></tr><tr><td>2025-03-20</td><td>03:40-04:00</td><td class='n'>17.7658</td></tr><tr><td>2025-03-20</td><td>18:50-19:00</td><td class='n'>25.0161</td></tr><tr><td>2025-03-20</td><td>20:00-20:20</td><td class='n'>6.3885</td></tr><tr><td>2025-03-20</td><td>21:10-21:20</td><td class='n'>1.7179</td></tr><tr><td>2025-03-20</td><td>23:30-23:40</td><td class='n'>2.3730</td></tr><tr><td>2025-06-21</td><td>09:00-09:10</td><td class='n'>2.8134</td></tr><tr><td>2025-09-23</td><td>00:40-00:50</td><td class='n'>6.6872</td></tr><tr><td>2025-09-23</td><td>02:10-02:20</td><td class='n'>13.8399</td></tr><tr><td>2025-09-23</td><td>04:50-05:10</td><td class='n'>35.9120</td></tr><tr><td>2025-09-23</td><td>05:50-07:20</td><td class='n'>168.7222</td></tr><tr><td>2025-09-23</td><td>09:30-09:50</td><td class='n'>42.9355</td></tr><tr><td>2025-09-23</td><td>10:50-11:00</td><td class='n'>8.3740</td></tr><tr><td>2025-09-23</td><td>14:20-15:10</td><td class='n'>196.1939</td></tr><tr><td>2025-09-23</td><td>15:50-16:40</td><td class='n'>91.3179</td></tr><tr><td>2025-09-23</td><td>17:10-17:20</td><td class='n'>8.6243</td></tr><tr><td>2025-09-23</td><td>17:30-17:40</td><td class='n'>9.8854</td></tr><tr><td>2025-09-23</td><td>18:10-18:20</td><td class='n'>6.9665</td></tr><tr><td>2025-09-23</td><td>20:00-20:20</td><td class='n'>43.1431</td></tr><tr><td>2025-09-23</td><td>20:50-21:00</td><td class='n'>34.8556</td></tr><tr><td>2025-09-23</td><td>21:20-21:30</td><td class='n'>22.1022</td></tr><tr><td>2025-09-23</td><td>22:20-22:30</td><td class='n'>1.4915</td></tr><tr><td>2025-12-21</td><td>03:30-03:50</td><td class='n'>47.2537</td></tr><tr><td>2025-12-21</td><td>10:40-10:50</td><td class='n'>5.6752</td></tr><tr><td>2025-12-21</td><td>11:00-11:30</td><td class='n'>93.8974</td></tr><tr><td>2025-12-21</td><td>15:20-15:30</td><td class='n'>16.8624</td></tr><tr><td>2025-12-21</td><td>18:20-19:00</td><td class='n'>34.4407</td></tr><tr><td>2025-12-21</td><td>19:50-20:00</td><td class='n'>1.3063</td></tr></table><img src="problem2/outputs/figures/q2_fig15_four_days_em.png" alt="图15　指定四日紧急购电量。秋分误差最大，夏至几乎无需紧急购电。"/><p class="cap">图15　指定四日紧急购电量。秋分误差最大，夏至几乎无需紧急购电。</p>
+<h3>7.4　表1 六个时段的能量流（用于核对平衡）</h3><p>实际净需求 $D^{\mathrm{act}}=\ell+b^{c}-p^{\mathrm{PV}}-b^{d}$。若 $D^{\mathrm{act}}\le q$ 且为正，则 $h=0$、$g=D^{\mathrm{act}}$；若 $D^{\mathrm{act}}>q$，则紧急补差。</p><table><tr><th>日期</th><th>时段</th><th>电价</th><th>q</th><th>充电</th><th>放电</th><th>负荷电量</th><th>光伏电量</th><th>g</th><th>h</th><th>Dact</th></tr><tr><td>2025-03-20</td><td>10:00-10:10</td><td class='n'>0.9919</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>163.0358</td><td class='n'>1096.3326</td><td class='n'>1112.5413</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-179.2445</td></tr><tr><td>2025-03-20</td><td>12:00-12:10</td><td class='n'>0.4411</td><td class='n'>729.1551</td><td class='n'>833.3333</td><td class='n'>0.0000</td><td class='n'>993.1353</td><td class='n'>1347.1566</td><td class='n'>479.3120</td><td class='n'>0.0000</td><td class='n'>479.3120</td></tr><tr><td>2025-03-20</td><td>14:00-14:10</td><td class='n'>1.0002</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>92.7174</td><td class='n'>1047.2470</td><td class='n'>1075.6023</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-121.0727</td></tr><tr><td>2025-03-20</td><td>16:00-16:10</td><td class='n'>0.8271</td><td class='n'>590.8494</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>1025.5624</td><td class='n'>463.3008</td><td class='n'>562.2616</td><td class='n'>0.0000</td><td class='n'>562.2616</td></tr><tr><td>2025-03-20</td><td>18:00-18:10</td><td class='n'>1.2561</td><td class='n'>717.0742</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>697.9973</td><td class='n'>0.0000</td><td class='n'>697.9973</td><td class='n'>0.0000</td><td class='n'>697.9973</td></tr><tr><td>2025-03-20</td><td>20:00-20:10</td><td class='n'>1.3513</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>761.6051</td><td class='n'>764.3365</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>2.7314</td><td class='n'>2.7314</td></tr><tr><td>2025-06-21</td><td>10:00-10:10</td><td class='n'>0.9919</td><td class='n'>0.0000</td><td class='n'>311.5914</td><td class='n'>0.0000</td><td class='n'>637.6840</td><td class='n'>1098.3149</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-149.0395</td></tr><tr><td>2025-06-21</td><td>12:00-12:10</td><td class='n'>0.4411</td><td class='n'>0.0000</td><td class='n'>366.8196</td><td class='n'>0.0000</td><td class='n'>622.5902</td><td class='n'>1340.7105</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-351.3006</td></tr><tr><td>2025-06-21</td><td>14:00-14:10</td><td class='n'>1.0002</td><td class='n'>0.0000</td><td class='n'>137.6574</td><td class='n'>0.0000</td><td class='n'>674.6484</td><td class='n'>990.2996</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-177.9938</td></tr><tr><td>2025-06-21</td><td>16:00-16:10</td><td class='n'>0.8271</td><td class='n'>300.2184</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>672.3810</td><td class='n'>593.8094</td><td class='n'>78.5716</td><td class='n'>0.0000</td><td class='n'>78.5716</td></tr><tr><td>2025-06-21</td><td>18:00-18:10</td><td class='n'>1.2561</td><td class='n'>556.4750</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>545.7471</td><td class='n'>143.3881</td><td class='n'>402.3590</td><td class='n'>0.0000</td><td class='n'>402.3590</td></tr><tr><td>2025-06-21</td><td>20:00-20:10</td><td class='n'>1.3513</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>758.9757</td><td class='n'>558.0394</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-200.9362</td></tr><tr><td>2025-09-23</td><td>10:00-10:10</td><td class='n'>0.9919</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>38.4296</td><td class='n'>1087.8485</td><td class='n'>1084.4596</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-35.0406</td></tr><tr><td>2025-09-23</td><td>12:00-12:10</td><td class='n'>0.4411</td><td class='n'>565.0176</td><td class='n'>833.3333</td><td class='n'>0.0000</td><td class='n'>969.2599</td><td class='n'>1448.3986</td><td class='n'>354.1946</td><td class='n'>0.0000</td><td class='n'>354.1946</td></tr><tr><td>2025-09-23</td><td>14:00-14:10</td><td class='n'>1.0002</td><td class='n'>0.0000</td><td class='n'>64.7521</td><td class='n'>0.0000</td><td class='n'>1049.7767</td><td class='n'>1139.6695</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-25.1406</td></tr><tr><td>2025-09-23</td><td>16:00-16:10</td><td class='n'>0.8271</td><td class='n'>587.7062</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>1117.4952</td><td class='n'>528.0625</td><td class='n'>587.7062</td><td class='n'>1.7265</td><td class='n'>589.4326</td></tr><tr><td>2025-09-23</td><td>18:00-18:10</td><td class='n'>1.2561</td><td class='n'>773.8865</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>764.3298</td><td class='n'>0.0000</td><td class='n'>764.3298</td><td class='n'>0.0000</td><td class='n'>764.3298</td></tr><tr><td>2025-09-23</td><td>20:00-20:10</td><td class='n'>1.3513</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>808.5893</td><td class='n'>827.1781</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>18.5889</td><td class='n'>18.5889</td></tr><tr><td>2025-12-21</td><td>10:00-10:10</td><td class='n'>0.9919</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>514.8125</td><td class='n'>1145.5621</td><td class='n'>814.3685</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-183.6189</td></tr><tr><td>2025-12-21</td><td>12:00-12:10</td><td class='n'>0.4411</td><td class='n'>1017.8097</td><td class='n'>833.3333</td><td class='n'>0.0000</td><td class='n'>1083.6438</td><td class='n'>984.1491</td><td class='n'>932.8280</td><td class='n'>0.0000</td><td class='n'>932.8280</td></tr><tr><td>2025-12-21</td><td>14:00-14:10</td><td class='n'>1.0002</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>390.4204</td><td class='n'>1079.1306</td><td class='n'>784.2340</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-95.5238</td></tr><tr><td>2025-12-21</td><td>16:00-16:10</td><td class='n'>0.8271</td><td class='n'>839.4547</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>1001.2240</td><td class='n'>199.8421</td><td class='n'>801.3819</td><td class='n'>0.0000</td><td class='n'>801.3819</td></tr><tr><td>2025-12-21</td><td>18:00-18:10</td><td class='n'>1.2561</td><td class='n'>749.0562</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>715.4144</td><td class='n'>0.0000</td><td class='n'>715.4144</td><td class='n'>0.0000</td><td class='n'>715.4144</td></tr><tr><td>2025-12-21</td><td>20:00-20:10</td><td class='n'>1.3513</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>784.8039</td><td class='n'>747.5859</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>0.0000</td><td class='n'>-37.2180</td></tr></table><p>以 2025-06-21 的 $10{:}00$–$10{:}10$ 为例：光伏电量 $1098.31$ 大于负荷 $637.68$，差额用于充电 $311.59$，净需求为负，计划购电为 0，紧急购电为 0。同日 $16{:}00$–$16{:}10$ 光伏已落，净需求 $78.57$，计划 $300.22$ 覆盖了它，多出来的计划电仍按 $0.8271$ 元/kWh 付费——这是为防预测误差预留的 80% 分位缓冲。</p><p>2025-09-23 的 $16{:}00$–$16{:}10$：$D^{\mathrm{act}}=589.43>q=587.71$，因此出现 $h=1.73$ kWh 的紧急购电，并按 $5\times 0.8271$ 计费。这说明计划已经贴着分位，一旦实际负荷偏高就会“刺出”一小截紧急量。</p><h2>8　夏至日调度图（代表日）</h2><p>夏至光伏强、负荷相对夏季空调日并不极端，最能看清“预测—计划—储能—紧急”四条线是否自洽。</p><img src="problem2/outputs/figures/q2_fig08_load_20250621.png" alt="图8　负荷实际与 0:00 预测。预测略平滑，峰值有偏差。"/><p class="cap">图8　负荷实际与 0:00 预测。预测略平滑，峰值有偏差。</p>
+<img src="problem2/outputs/figures/q2_fig09_pv_20250621.png" alt="图9　光伏实际与日前预测。"/><p class="cap">图9　光伏实际与日前预测。</p>
+<img src="problem2/outputs/figures/q2_fig10_q_20250621.png" alt="图10　计划购电量。低价时段抬高，高价时段压到 0。"/><p class="cap">图10　计划购电量。低价时段抬高，高价时段压到 0。</p>
+<img src="problem2/outputs/figures/q2_fig11_charge_20250621.png" alt="图11　计划充电，红虚线为 Bmax=833.33 kWh。"/><p class="cap">图11　计划充电，红虚线为 Bmax=833.33 kWh。</p>
+<img src="problem2/outputs/figures/q2_fig12_discharge_20250621.png" alt="图12　计划放电，晚高峰集中释放。"/><p class="cap">图12　计划放电，晚高峰集中释放。</p>
+<img src="problem2/outputs/figures/q2_fig13_soc_20250621.png" alt="图13　储电量轨迹，始终在 [1200,10800] 内。"/><p class="cap">图13　储电量轨迹，始终在 [1200,10800] 内。</p>
+<img src="problem2/outputs/figures/q2_fig14_h_20250621.png" alt="图14　回测紧急购电。仅在预测偏差处出现短脉冲。"/><p class="cap">图14　回测紧急购电。仅在预测偏差处出现短脉冲。</p>
+<h2>9　result2.xlsx</h2><p>文件路径：<code>problem2/outputs/result2.xlsx</code>。工作表：</p><ul><li><strong>计划购电量</strong>：2025-02-01 至 2025-12-31 共 334 天，每行 144 个 10 min 计划量、全天购电量、全天购电费（含紧急）。</li><li><strong>充放电量</strong>：每天 6 个 4 小时块的充电合计、放电合计；0:00 与 24:00 储电量写在前两块对应的“时刻/储电量”列。</li><li><strong>紧急购电量</strong>：合并连续时段后的 $(日期, 时间段, 电量)$；若当天 $h=0$ 则记为“无”。</li></ul><p>1 月的策略同样存在于 <code>daily_summary.csv</code> 与 <code>year_arrays.npz</code> 中，只是官方模板不要求写入 xlsx。</p><h2>10　模型检验摘要</h2><p>把 365 天解代回约束，<span class='ok'>全部 21/21 项通过</span>。储能递推最大残差 $6.50e-11$ kWh，缺口覆盖残差为 0，充放电互斥量为 0，result2 与数组最大舍入差 $5.00e-05$。详细代回过程、检验图和文字说明见下一份报告。</p><p><a href="problem2/outputs/verification/模型检验报告.html">打开：问题2 模型检验报告</a></p></body></html>

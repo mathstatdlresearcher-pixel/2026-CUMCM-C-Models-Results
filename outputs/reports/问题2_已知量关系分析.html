@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/>
+<title>问题2　已知量关系分析（对建模的含义）</title>
+<script>window.MathJax={tex:{inlineMath:[['$','$']],displayMath:[['$','$']]}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+body { font: 16.5px/1.85 "Times New Roman","SimSun",serif; max-width: 920px; margin: 32px auto 80px; color:#1a2332; padding: 0 18px; }
+h1,h2,h3 { font-family:"SimHei","Microsoft YaHei",sans-serif; color:#1f4e79; }
+h1 { text-align:center; font-size:21px; line-height:1.45; }
+p { text-align:justify; }
+table { border-collapse:collapse; width:100%; font-size:13px; margin:12px 0 18px; }
+th,td { border:1px solid #c5cdd8; padding:4px 6px; }
+th { background:#eef2f6; }
+td.n { text-align:right; font-variant-numeric: tabular-nums; }
+.box { background:#f6f8fb; border-left:4px solid #2c5f8a; padding:10px 14px; margin:14px 0; }
+img { width:100%; border:1px solid #d8dee9; margin:6px 0 8px; }
+.cap { color:#4b5563; font-size:14.5px; margin:0 0 16px; }
+</style></head><body>
+<h1>问题2　已知量关系分析<br/>电价、负荷、光伏如何进入模型</h1>
+<p>问题2的外生已知量只有三类：附件1的分时电价 $c_t$（<strong>365 天同一条</strong>），附件2的小区负载 $L_{d,t}$ 与光伏实际 $P_{d,t}$。派生净负荷 $N_{d,t}=L_{d,t}-P_{d,t}$。购电、充放电、紧急购电是决策量，这里不算相关、不画散点。分析目的是决定：目标函数里放什么、平衡式里放什么、要不要分日、要不要预测。</p>
+
+<div class="box">
+<b>已知量</b>　$c_t$（元/kWh），$L_{d,t}$、$P_{d,t}$（kW），$N_{d,t}$。<br/>
+<b>不做</b>　$G,C,D,E,H$ 与预报值的相关（预报是模型造的，不是题目原始已知量）。
+</div>
+
+<h2>1　三个已知量的相位</h2>
+<img src="problem2/outputs/var_known/figures/q2k_fig01_triple.png" alt="图1　负荷/光伏全年均值±1σ，电价为附件1（每天相同）"/><p class="cap">图1　负荷/光伏全年均值±1σ，电价为附件1（每天相同）</p>
+
+<p>与问题1同一逻辑：负荷早峰、傍晚仍高；光伏正午单峰、夜间为 0（全年零值占比 44.79%）；电价夜低晚高，范围 0.3713–1.3952，均值 0.7662。阴影是跨日标准差，说明<strong>同一时刻不同日可以差出一截</strong>，问题1那一条负荷不能再用。</p>
+<div class="box">对建模：目标只含 $c_t G_t$（电价仍是确定的日内曲线）；功率平衡必须按日使用 $L_{d,t},P_{d,t}$。夜间光伏为零应保留，当作物理边界，不要当缺失。</div>
+
+<h2>2　相关：全年堆叠 365×144</h2>
+<img src="problem2/outputs/var_known/figures/q2k_fig02_corr.png" alt="图2　已知量 Pearson 相关"/><p class="cap">图2　已知量 Pearson 相关</p>
+
+<table><tr><th>关系</th><th>pearson</th><th>pearson_p</th><th>spearman</th><th>spearman_p</th></tr><tr><td>电价–负荷</td><td class='n'>0.3064</td><td class='n'>0.0000</td><td class='n'>0.3978</td><td class='n'>0.0000</td></tr><tr><td>电价–光伏</td><td class='n'>0.0809</td><td class='n'>0.0000</td><td class='n'>0.2888</td><td class='n'>0.0000</td></tr><tr><td>负荷–光伏</td><td class='n'>0.5728</td><td class='n'>0.0000</td><td class='n'>0.5794</td><td class='n'>0.0000</td></tr><tr><td>电价–净负荷</td><td class='n'>0.0797</td><td class='n'>0.0000</td><td class='n'>0.0381</td><td class='n'>0.0000</td></tr><tr><td>负荷–净负荷</td><td class='n'>-0.1140</td><td class='n'>0.0000</td><td class='n'>-0.0052</td><td class='n'>0.2289</td></tr><tr><td>光伏–净负荷</td><td class='n'>-0.8796</td><td class='n'>0.0000</td><td class='n'>-0.7266</td><td class='n'>0.0000</td></tr><tr><td>电价–负荷(白天)</td><td class='n'>0.0016</td><td class='n'>0.7975</td><td class='n'>0.1140</td><td class='n'>0.0000</td></tr><tr><td>电价–光伏(白天)</td><td class='n'>-0.4055</td><td class='n'>0.0000</td><td class='n'>-0.2828</td><td class='n'>0.0000</td></tr><tr><td>负荷–光伏(白天)</td><td class='n'>0.2118</td><td class='n'>0.0000</td><td class='n'>0.2213</td><td class='n'>0.0000</td></tr><tr><td>电价–净负荷(白天)</td><td class='n'>0.3972</td><td class='n'>0.0000</td><td class='n'>0.2824</td><td class='n'>0.0000</td></tr></table>
+<p>全天：负荷–光伏 $r=0.573$（都在白天抬升）；电价–负荷 $r=0.306$（晚峰弱重叠）；电价–光伏 $r=0.081$ 接近 0；电价–净负荷 $r=0.080$ 仍弱——夜间“价低但缺电”和傍晚“价高且缺电”对冲。白天：电价–光伏 $r=-0.405$ 为负，电价往上爬时光伏已过正午。</p>
+<p>光伏–净负荷 $r=-0.880$ 接近 $-1$，主要是定义 $N=L-P$，不当作新发现。负荷与光伏白天 $r=0.212$，二者<strong>不是独立</strong>。</p>
+<div class="box">对建模：$c_t$ 进目标，$L,P$ 进平衡，不能互相替代。场景或残差若做随机规划，负荷冲击与光伏冲击应保留同日相关性，不宜独立抽。$r(c,N)$ 小，不能据此取消储能，要看分时段符号。</div>
+
+<h2>3　日间、季节：为什么必须做日前预测</h2>
+<img src="problem2/outputs/var_known/figures/q2k_fig05_daily.png" alt="图5　日均负荷与光伏"/><p class="cap">图5　日均负荷与光伏</p>
+
+<img src="problem2/outputs/var_known/figures/q2k_fig03_four_LP.png" alt="图3　指定四日负荷与光伏"/><p class="cap">图3　指定四日负荷与光伏</p>
+
+<p>负荷全年均值 4626.03 kW，始终为正（非正样本 0）。日均负荷从 2978.8 到 5898.6 kW。冬至日负荷高、光伏矮，夏至相反。相邻日日均负荷相关 0.374，隔 7 日 0.988；光伏相邻日 0.964，隔 7 日 0.929。</p>
+<img src="problem2/outputs/var_known/figures/q2k_fig06_cv.png" alt="图6　同一时刻跨日变异系数"/><p class="cap">图6　同一时刻跨日变异系数</p>
+
+<p>图6：白天光伏 CV 大（天气），负荷 CV 在过渡时段也明显。0:00 看不到当天实测，但昨天和上周同日携带可用信息。</p>
+<div class="box">对建模：问题2在 0:00 只能用历史做 $\hat L_{d,t},\hat P_{d,t}$（昨天、上周、近 7 日、近 28 日的凸组合与这里的滞后相关一致）。执行层用附件2实际值，缺口用 $5c_t$ 紧急购电。禁止把当天 $L,P$ 写进计划阶段。</div>
+
+<h2>4　净负荷：储能进模型的理由</h2>
+<img src="problem2/outputs/var_known/figures/q2k_fig04_month_net.png" alt="图4　分月净负荷与富余占比"/><p class="cap">图4　分月净负荷与富余占比</p>
+
+<table><tr><th>月</th><th>负荷均值kW</th><th>光伏均值kW</th><th>净负荷均值kW</th><th>富余时段占比%</th><th>r_负荷光伏</th><th>r_电价负荷</th><th>r_电价净负荷</th><th>日均负荷标准差</th></tr><tr><td>1.0</td><td class='n'>4725.7735</td><td class='n'>1589.1839</td><td class='n'>3136.5896</td><td class='n'>6.7204</td><td class='n'>0.6184</td><td class='n'>0.2393</td><td class='n'>0.1507</td><td class='n'>861.5390</td></tr><tr><td>2.0</td><td class='n'>4516.8965</td><td class='n'>1966.4803</td><td class='n'>2550.4162</td><td class='n'>15.0050</td><td class='n'>0.6333</td><td class='n'>0.2658</td><td class='n'>0.1127</td><td class='n'>857.3901</td></tr><tr><td>3.0</td><td class='n'>4355.6990</td><td class='n'>2304.1968</td><td class='n'>2051.5022</td><td class='n'>21.2814</td><td class='n'>0.6222</td><td class='n'>0.2894</td><td class='n'>0.0770</td><td class='n'>862.3375</td></tr><tr><td>4.0</td><td class='n'>4392.9768</td><td class='n'>2701.6857</td><td class='n'>1691.2911</td><td class='n'>26.1343</td><td class='n'>0.6489</td><td class='n'>0.2965</td><td class='n'>0.0305</td><td class='n'>841.2374</td></tr><tr><td>5.0</td><td class='n'>4401.6778</td><td class='n'>2806.5024</td><td class='n'>1595.1754</td><td class='n'>28.1810</td><td class='n'>0.6026</td><td class='n'>0.3411</td><td class='n'>0.0272</td><td class='n'>888.0866</td></tr><tr><td>6.0</td><td class='n'>4800.3726</td><td class='n'>2369.8266</td><td class='n'>2430.5461</td><td class='n'>16.7824</td><td class='n'>0.5603</td><td class='n'>0.3915</td><td class='n'>0.0849</td><td class='n'>845.1625</td></tr><tr><td>7.0</td><td class='n'>5337.2587</td><td class='n'>2723.2543</td><td class='n'>2614.0044</td><td class='n'>21.2590</td><td class='n'>0.5468</td><td class='n'>0.3867</td><td class='n'>0.0567</td><td class='n'>828.6145</td></tr><tr><td>8.0</td><td class='n'>5045.1771</td><td class='n'>2915.9931</td><td class='n'>2129.1840</td><td class='n'>26.1873</td><td class='n'>0.5003</td><td class='n'>0.3690</td><td class='n'>0.0414</td><td class='n'>886.5532</td></tr><tr><td>9.0</td><td class='n'>4535.9104</td><td class='n'>2607.5995</td><td class='n'>1928.3109</td><td class='n'>24.9769</td><td class='n'>0.5879</td><td class='n'>0.3668</td><td class='n'>0.0845</td><td class='n'>843.2147</td></tr><tr><td>10.0</td><td class='n'>4347.0195</td><td class='n'>2364.3131</td><td class='n'>1982.7064</td><td class='n'>23.2303</td><td class='n'>0.6094</td><td class='n'>0.2892</td><td class='n'>0.0860</td><td class='n'>862.7895</td></tr><tr><td>11.0</td><td class='n'>4337.6713</td><td class='n'>1854.3763</td><td class='n'>2483.2950</td><td class='n'>15.8102</td><td class='n'>0.5850</td><td class='n'>0.2877</td><td class='n'>0.1407</td><td class='n'>871.6387</td></tr><tr><td>12.0</td><td class='n'>4691.3059</td><td class='n'>1513.8369</td><td class='n'>3177.4690</td><td class='n'>5.5108</td><td class='n'>0.6312</td><td class='n'>0.2561</td><td class='n'>0.1779</td><td class='n'>832.5422</td></tr></table>
+<p>全年约 19.27% 的 10 min 净负荷为负（光伏富余）。夏季富余时段多、月均净负荷低；冬季相反。一天之内 $N$ 仍会换号。</p>
+<div class="box">对建模：平衡式为 $G+P\Delta t+D=L\Delta t+C$（计划阶段用预测）。储能把正午富余和谷价电移到晚峰。跨日 $E_{d+1,0}=E_{d,144}$，因为图5显示相邻日负荷连续，日末放空会伤害次日早峰。不强制每天 $E_{144}=E_0$。</div>
+
+<h2>5　对问题2模型的直接对应</h2>
+<table>
+<tr><th>已知量上的事实</th><th>模型里怎么写</th></tr>
+<tr><td>电价每天同一条、有峰谷</td><td>目标 $\min\sum_t c_t G_{d,t}$，$c_t$ 取附件1</td></tr>
+<tr><td>负荷、光伏随日变，且 0:00 不可用当天实测</td><td>计划用 $\hat L,\hat P$；回测用附件2</td></tr>
+<tr><td>日均负荷/光伏有强滞后相关</td><td>预报用昨天、上周、近周、气候态凸组合</td></tr>
+<tr><td>负荷与光伏同日相关</td><td>场景里净负荷一起扰动，不独立抽 $L$ 和 $P$</td></tr>
+<tr><td>$N$ 一日内换号，夏季富余更多</td><td>储能容量与充放互斥；48 h 前瞻给日末 SOC 定价</td></tr>
+<tr><td>$r(c,N)$ 全年弱</td><td>分时段建模，不把净负荷回归成电价的函数</td></tr>
+<tr><td>夜间光伏为零是物理特征</td><td>保留 0，夜间只靠 $G$ 与储能</td></tr>
+</table>
+<p>结论：问题2相对问题1，已知量上多出来的是<strong>负荷与光伏的日间、季节结构</strong>，不是电价变了。因此模型升级在“分日预测 + 紧急购电 + 跨日储能”，电价通道保持附件1。</p>
+<p>表：<code>problem2/outputs/var_known/</code>。图：<code>figures/</code>。</p>
+</body></html>
